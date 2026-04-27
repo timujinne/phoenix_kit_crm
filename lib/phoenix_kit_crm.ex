@@ -133,20 +133,23 @@ defmodule PhoenixKitCRM do
   @impl PhoenixKit.Module
   def settings_tabs do
     [
-      %Tab{
+      Tab.new!(
         id: :admin_settings_crm,
         label: "CRM",
         icon: "hero-users",
-        path: "settings/crm",
+        path: "crm",
         priority: 650,
         level: :admin,
+        parent: :admin_settings,
         permission: module_key(),
         match: :exact,
-        group: :admin_settings,
         live_view: {PhoenixKitCRM.Web.SettingsLive, :index}
-      }
+      )
     ]
   end
+
+  @impl PhoenixKit.Module
+  def route_module, do: PhoenixKitCRM.Routes
 
   @impl PhoenixKit.Module
   def css_sources, do: [:phoenix_kit_crm]

@@ -1,142 +1,118 @@
 defmodule PhoenixKitCRM.Web.CompaniesView do
   @moduledoc """
-  LiveView for the CRM Companies subtab — skeleton page (no schema yet).
-
-  Guarded by `PhoenixKitCRM.enabled?()` and the `crm_companies_enabled` setting.
-  Renders a placeholder table whose visible columns are persisted per user via
-  `PhoenixKitCRM.UserRoleView`.
+  LiveView for the CRM Companies subtab — placeholder data until the
+  legal-entity schema lands. Per-user column configuration with card/table
+  view toggle.
   """
   use PhoenixKitWeb, :live_view
+  use PhoenixKitCRM.Web.ColumnManagement
 
   alias PhoenixKit.Settings
-  alias PhoenixKitCRM.{Paths, UserRoleView}
+  alias PhoenixKitCRM.{ColumnConfig, Paths, Web.ColumnModal}
 
-  @default_columns ["name", "tax_id", "status"]
-  @column_labels %{"name" => "Название", "tax_id" => "ИНН", "status" => "Статус"}
+  alias PhoenixKitWeb.Components.Core.TableDefault
 
   @impl true
   def mount(_params, _session, socket) do
-    unless PhoenixKitCRM.enabled?() do
-      {:ok,
-       socket
-       |> put_flash(:error, "CRM is not enabled.")
-       |> push_navigate(to: Paths.index(), replace: true)}
-    else
-      unless Settings.get_boolean_setting("crm_companies_enabled", false) do
+    cond do
+      not PhoenixKitCRM.enabled?() ->
+        {:ok,
+         socket
+         |> put_flash(:error, "CRM is not enabled.")
+         |> push_navigate(to: Paths.index(), replace: true)}
+
+      not Settings.get_boolean_setting("crm_companies_enabled", false) ->
         {:ok,
          socket
          |> put_flash(:error, "Companies section is not enabled.")
          |> push_navigate(to: Paths.index(), replace: true)}
-      else
+
+      true ->
         current_user = socket.assigns.phoenix_kit_current_user
-        view_config = UserRoleView.get_view_config(current_user.uuid, :companies)
 
-        visible_columns =
-          case Map.get(view_config, "columns") do
-            cols when is_list(cols) and cols != [] -> cols
-            _ -> @default_columns
-          end
+        socket =
+          socket
+          |> assign(:page_title, "CRM — Companies / Юрлица")
+          |> assign(:companies, [])
+          |> PhoenixKitCRM.Web.ColumnManagement.assign_column_state(:companies, current_user.uuid)
 
-        {:ok,
-         assign(socket,
-           page_title: "CRM — Companies / Юрлица",
-           view_config: view_config,
-           visible_columns: visible_columns,
-           columns_panel_open: false
-         )}
-      end
+        {:ok, socket}
     end
   end
 
   @impl true
-  def handle_event("toggle_column", %{"column" => col}, socket) do
-    current_user = socket.assigns.phoenix_kit_current_user
-
-    visible_columns =
-      if col in socket.assigns.visible_columns do
-        List.delete(socket.assigns.visible_columns, col)
-      else
-        socket.assigns.visible_columns ++ [col]
-      end
-
-    updated_config = Map.put(socket.assigns.view_config, "columns", visible_columns)
-    UserRoleView.put_view_config(current_user.uuid, :companies, updated_config)
-
-    {:noreply, assign(socket, visible_columns: visible_columns, view_config: updated_config)}
-  end
-
-  @impl true
-  def handle_event("toggle_columns_panel", _params, socket) do
-    {:noreply, assign(socket, columns_panel_open: !socket.assigns.columns_panel_open)}
-  end
-
-  @impl true
   def render(assigns) do
-    assigns = assign(assigns, :available_columns, @default_columns)
-    assigns = assign(assigns, :column_labels, @column_labels)
-
     ~H"""
-    <div class="flex flex-col mx-auto max-w-5xl px-4 py-6 gap-6">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">
-          <.icon name="hero-building-office-2" class="w-6 h-6 inline mr-1" />
-          Companies / Юрлица
+    <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <h1 class="text-2xl font-bold flex items-center gap-2">
+          <.icon name="hero-building-office-2" class="w-6 h-6" /> Companies / Юрлица
         </h1>
-        <button
-          class="btn btn-outline btn-sm"
-          phx-click="toggle_columns_panel"
-        >
-          <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
-          Columns
-        </button>
       </div>
 
-      <div :if={@columns_panel_open} class="card bg-base-200 shadow">
-        <div class="card-body py-4">
-          <h3 class="font-semibold text-sm mb-2">Visible columns</h3>
-          <div class="flex flex-wrap gap-4">
-            <label :for={col <- @available_columns} class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                class="checkbox checkbox-primary checkbox-sm"
-                checked={col in @visible_columns}
-                phx-click="toggle_column"
-                phx-value-column={col}
-              />
-              <span class="text-sm">{Map.get(@column_labels, col, col)}</span>
-            </label>
-          </div>
-        </div>
+      <div class="alert alert-info">
+        <.icon name="hero-information-circle" class="w-5 h-5" />
+        <span>
+          Функциональность в разработке. Схема юрлиц будет добавлена в следующем релизе.
+        </span>
       </div>
 
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <div class="alert alert-info mb-4">
-            <.icon name="hero-information-circle" class="w-5 h-5" />
-            <span>
-              Функциональность в разработке. Схема юрлиц будет добавлена в следующем релизе.
-            </span>
-          </div>
+      <TableDefault.table_default
+        id="crm-companies-table"
+        toggleable
+        items={@companies}
+        card_title={fn c -> Map.get(c, :name, "—") end}
+        card_fields={fn c -> Enum.map(@selected_columns, &card_field(&1, c)) end}
+      >
+        <:toolbar_actions>
+          <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
+            <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Columns
+          </button>
+        </:toolbar_actions>
 
-          <div class="overflow-x-auto">
-            <table class="table table-zebra w-full">
-              <thead>
-                <tr>
-                  <th :for={col <- @visible_columns}>{Map.get(@column_labels, col, col)}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan={length(@visible_columns)} class="text-center text-base-content/50 py-8">
-                    Нет данных
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        <TableDefault.table_default_header>
+          <TableDefault.table_default_row>
+            <TableDefault.table_default_header_cell :for={col <- @selected_columns}>
+              {column_label(col)}
+            </TableDefault.table_default_header_cell>
+          </TableDefault.table_default_row>
+        </TableDefault.table_default_header>
+
+        <TableDefault.table_default_body>
+          <TableDefault.table_default_row :for={company <- @companies}>
+            <TableDefault.table_default_cell :for={col <- @selected_columns}>
+              {render_cell(col, company)}
+            </TableDefault.table_default_cell>
+          </TableDefault.table_default_row>
+
+          <TableDefault.table_default_row :if={@companies == []}>
+            <TableDefault.table_default_cell colspan={length(@selected_columns)}>
+              <div class="text-center text-base-content/50 py-8">
+                Нет данных
+              </div>
+            </TableDefault.table_default_cell>
+          </TableDefault.table_default_row>
+        </TableDefault.table_default_body>
+      </TableDefault.table_default>
+
+      <ColumnModal.column_modal
+        show={@show_column_modal}
+        scope={@scope}
+        selected={@selected_columns}
+        temp_selected={@temp_selected_columns}
+      />
     </div>
     """
   end
+
+  defp column_label(col) do
+    case ColumnConfig.get_column_metadata(:companies, col) do
+      %{label: label} -> label
+      _ -> col
+    end
+  end
+
+  defp card_field(col, company), do: %{label: column_label(col), value: render_cell(col, company)}
+
+  defp render_cell(col, company), do: Map.get(company, String.to_atom(col), "—")
 end

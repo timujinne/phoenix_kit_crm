@@ -1,153 +1,162 @@
 defmodule PhoenixKitCRM.Web.RoleView do
   @moduledoc """
   Admin LiveView for a single CRM role page — lists users assigned to the role
-  and allows per-user column configuration.
+  with per-user persisted column configuration. Supports a card/table view
+  toggle (provided by `PhoenixKitWeb.Components.Core.TableDefault`).
   """
   use PhoenixKitWeb, :live_view
+  use PhoenixKitCRM.Web.ColumnManagement
 
   alias PhoenixKit.Users.Roles
-  alias PhoenixKitCRM.UserRoleView
+  alias PhoenixKitCRM.{ColumnConfig, Web.ColumnModal}
 
-  @default_columns ["email", "username", "status"]
-
-  @available_columns [
-    {"email", "Email"},
-    {"username", "Username"},
-    {"status", "Status"}
-  ]
+  alias PhoenixKitWeb.Components.Core.TableDefault
 
   @impl true
   def mount(%{"role_uuid" => role_uuid} = _params, _session, socket) do
-    unless PhoenixKitCRM.enabled?() do
-      {:ok,
-       push_navigate(socket, to: "/admin/crm", replace: true)
-       |> put_flash(:error, "CRM is not enabled.")}
-    else
-      unless PhoenixKitCRM.RoleSettings.enabled?(role_uuid) do
+    cond do
+      not PhoenixKitCRM.enabled?() ->
         {:ok,
-         push_navigate(socket, to: "/admin/crm", replace: true)
-         |> put_flash(:error, "This role does not have CRM access.")}
-      else
+         socket
+         |> put_flash(:error, "CRM is not enabled.")
+         |> push_navigate(to: "/admin/crm", replace: true)}
+
+      not PhoenixKitCRM.RoleSettings.enabled?(role_uuid) ->
+        {:ok,
+         socket
+         |> put_flash(:error, "This role does not have CRM access.")
+         |> push_navigate(to: "/admin/crm", replace: true)}
+
+      true ->
         case Roles.get_role_by_uuid(role_uuid) do
           nil ->
             {:ok,
-             push_navigate(socket, to: "/admin/crm", replace: true)
-             |> put_flash(:error, "Role not found.")}
+             socket
+             |> put_flash(:error, "Role not found.")
+             |> push_navigate(to: "/admin/crm", replace: true)}
 
           role ->
             current_user = socket.assigns.phoenix_kit_current_user
             users = Roles.users_with_role(role.name)
+            scope = {:role, role_uuid}
 
-            view_config = UserRoleView.get_view_config(current_user.uuid, {:role, role_uuid})
-            columns = Map.get(view_config, "columns", @default_columns)
+            socket =
+              socket
+              |> assign(:page_title, "CRM — #{role.name}")
+              |> assign(:role, role)
+              |> assign(:users, users)
+              |> PhoenixKitCRM.Web.ColumnManagement.assign_column_state(scope, current_user.uuid)
 
-            {:ok,
-             assign(socket,
-               page_title: "CRM — #{role.name}",
-               role: role,
-               role_uuid: role_uuid,
-               users: users,
-               view_config: view_config,
-               columns: columns,
-               available_columns: @available_columns,
-               column_panel_open: false
-             )}
+            {:ok, socket}
         end
-      end
     end
-  end
-
-  @impl true
-  def handle_event("toggle_column", %{"column" => col}, socket) do
-    current_user = socket.assigns.phoenix_kit_current_user
-    columns = socket.assigns.columns
-
-    updated_columns =
-      if col in columns do
-        List.delete(columns, col)
-      else
-        columns ++ [col]
-      end
-
-    updated_config = Map.put(socket.assigns.view_config, "columns", updated_columns)
-
-    UserRoleView.put_view_config(
-      current_user.uuid,
-      {:role, socket.assigns.role_uuid},
-      updated_config
-    )
-
-    {:noreply, assign(socket, columns: updated_columns, view_config: updated_config)}
-  end
-
-  def handle_event("toggle_column_panel", _params, socket) do
-    {:noreply, assign(socket, column_panel_open: !socket.assigns.column_panel_open)}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col mx-auto max-w-5xl px-4 py-6 gap-6">
-      <div class="flex items-center justify-between">
+    <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
+      <div class="flex items-center justify-between flex-wrap gap-2">
         <h1 class="text-2xl font-bold">{@page_title}</h1>
-        <button
-          class="btn btn-outline btn-sm"
-          phx-click="toggle_column_panel"
-        >
-          <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
-          Налаштування колонок
-        </button>
+        <span class="text-sm text-base-content/60">
+          {length(@users)} {if length(@users) == 1, do: "user", else: "users"}
+        </span>
       </div>
 
-      <div :if={@column_panel_open} class="card bg-base-200 shadow">
-        <div class="card-body py-4">
-          <h3 class="font-semibold mb-2">Налаштування колонок</h3>
-          <div class="flex flex-wrap gap-4">
-            <label :for={{col_key, col_label} <- @available_columns} class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                class="checkbox checkbox-sm"
-                checked={col_key in @columns}
-                phx-click="toggle_column"
-                phx-value-column={col_key}
-              />
-              <span class="text-sm">{col_label}</span>
-            </label>
-          </div>
-        </div>
-      </div>
+      <TableDefault.table_default
+        id="crm-role-users-table"
+        toggleable
+        items={@users}
+        card_title={fn u -> u.email end}
+        card_fields={fn u -> Enum.map(@selected_columns, &card_field(&1, u)) end}
+      >
+        <:toolbar_actions>
+          <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
+            <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Columns
+          </button>
+        </:toolbar_actions>
 
-      <div class="card bg-base-100 shadow-xl overflow-x-auto">
-        <table class="table table-zebra w-full">
-          <thead>
-            <tr>
-              <th :if={"email" in @columns}>Email</th>
-              <th :if={"username" in @columns}>Username</th>
-              <th :if={"status" in @columns}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={user <- @users}>
-              <td :if={"email" in @columns}>{user.email}</td>
-              <td :if={"username" in @columns}>{user.username}</td>
-              <td :if={"status" in @columns}>
-                <span class={[
-                  "badge badge-sm",
-                  if(user.is_active, do: "badge-success", else: "badge-ghost")
-                ]}>
-                  {if user.is_active, do: "Active", else: "Inactive"}
-                </span>
-              </td>
-            </tr>
-            <tr :if={@users == []}>
-              <td colspan="10" class="text-center text-base-content/50 py-8">
+        <TableDefault.table_default_header>
+          <TableDefault.table_default_row>
+            <TableDefault.table_default_header_cell :for={col <- @selected_columns}>
+              {column_label(col)}
+            </TableDefault.table_default_header_cell>
+          </TableDefault.table_default_row>
+        </TableDefault.table_default_header>
+
+        <TableDefault.table_default_body>
+          <TableDefault.table_default_row :for={user <- @users}>
+            <TableDefault.table_default_cell :for={col <- @selected_columns}>
+              {render_cell(col, user)}
+            </TableDefault.table_default_cell>
+          </TableDefault.table_default_row>
+
+          <TableDefault.table_default_row :if={@users == []}>
+            <TableDefault.table_default_cell colspan={length(@selected_columns)}>
+              <div class="text-center text-base-content/50 py-8">
                 No users with this role.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </div>
+            </TableDefault.table_default_cell>
+          </TableDefault.table_default_row>
+        </TableDefault.table_default_body>
+      </TableDefault.table_default>
+
+      <ColumnModal.column_modal
+        show={@show_column_modal}
+        scope={@scope}
+        selected={@selected_columns}
+        temp_selected={@temp_selected_columns}
+      />
     </div>
     """
+  end
+
+  defp column_label(col) do
+    case ColumnConfig.get_column_metadata({:role, nil}, col) do
+      %{label: label} -> label
+      _ -> col
+    end
+  end
+
+  defp card_field(col, user), do: %{label: column_label(col), value: render_cell(col, user)}
+
+  defp render_cell("email", u), do: u.email
+  defp render_cell("username", u), do: u.username || "—"
+  defp render_cell("full_name", u), do: full_name(u)
+  defp render_cell("status", u), do: crm_status_html(u.is_active)
+  defp render_cell("registered", u), do: format_date(u.inserted_at)
+  defp render_cell("last_confirmed", u), do: format_date(u.confirmed_at)
+  defp render_cell("location", u), do: location(u)
+  defp render_cell(_, _), do: "—"
+
+  defp full_name(u) do
+    [Map.get(u, :first_name), Map.get(u, :last_name)]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" ")
+    |> case do
+      "" -> "—"
+      n -> n
+    end
+  end
+
+  defp crm_status_html(true),
+    do: Phoenix.HTML.raw(~s(<span class="badge badge-sm badge-success">Active</span>))
+
+  defp crm_status_html(_),
+    do: Phoenix.HTML.raw(~s(<span class="badge badge-sm badge-ghost">Inactive</span>))
+
+  defp format_date(nil), do: "—"
+  defp format_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d")
+  defp format_date(%NaiveDateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d")
+  defp format_date(_), do: "—"
+
+  defp location(u) do
+    [Map.get(u, :registration_city), Map.get(u, :registration_country)]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(", ")
+    |> case do
+      "" -> "—"
+      l -> l
+    end
   end
 end

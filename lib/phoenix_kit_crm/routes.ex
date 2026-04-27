@@ -1,23 +1,31 @@
 defmodule PhoenixKitCRM.Routes do
   @moduledoc """
-  Route module scaffold for CRM.
+  Route definitions for the CRM module.
 
-  Not wired up by default — the single admin LiveView and the settings
-  LiveView are registered via `admin_tabs/0` and `settings_tabs/0` in
-  `PhoenixKitCRM`. Uncomment and extend below, then return this module
-  from `PhoenixKitCRM.route_module/0` if you need multiple admin pages
-  (list + form + detail), public routes, or custom controllers.
+  List page routes for the parent CRM tab and the Companies subtab are
+  auto-generated from `live_view:` fields in `PhoenixKitCRM.admin_tabs/0`.
+  Parameterized routes (e.g. per-role pages) live here because dynamic
+  tabs registered into `PhoenixKit.Dashboard.Registry` at runtime do not
+  trigger router compilation.
   """
 
-  # def admin_locale_routes do
-  #   quote do
-  #     live "/admin/crm", PhoenixKitCRM.Web.CRMLive, :index, as: :crm_localized
-  #   end
-  # end
+  alias PhoenixKitCRM.Web
 
-  # def admin_routes do
-  #   quote do
-  #     live "/admin/crm", PhoenixKitCRM.Web.CRMLive, :index, as: :crm
-  #   end
-  # end
+  def admin_routes do
+    build_admin_routes("")
+  end
+
+  def admin_locale_routes do
+    build_admin_routes("_locale")
+  end
+
+  defp build_admin_routes(suffix) do
+    role_view = Web.RoleView
+
+    quote do
+      live("/admin/crm/role/:role_uuid", unquote(role_view), :index,
+        as: :"crm_role_view#{unquote(suffix)}"
+      )
+    end
+  end
 end
