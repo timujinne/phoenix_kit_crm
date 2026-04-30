@@ -8,7 +8,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
   use PhoenixKitCRM.Web.ColumnManagement
 
   alias PhoenixKit.Users.Roles
-  alias PhoenixKitCRM.{ColumnConfig, Web.ColumnModal}
+  alias PhoenixKitCRM.{ColumnConfig, Paths, Web.ColumnModal}
 
   alias PhoenixKitWeb.Components.Core.TableDefault
 
@@ -19,13 +19,13 @@ defmodule PhoenixKitCRM.Web.RoleView do
         {:ok,
          socket
          |> put_flash(:error, "CRM is not enabled.")
-         |> push_navigate(to: "/admin/crm", replace: true)}
+         |> push_navigate(to: Paths.index(), replace: true)}
 
       not PhoenixKitCRM.RoleSettings.enabled?(role_uuid) ->
         {:ok,
          socket
          |> put_flash(:error, "This role does not have CRM access.")
-         |> push_navigate(to: "/admin/crm", replace: true)}
+         |> push_navigate(to: Paths.index(), replace: true)}
 
       true ->
         case Roles.get_role_by_uuid(role_uuid) do
@@ -33,7 +33,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
             {:ok,
              socket
              |> put_flash(:error, "Role not found.")
-             |> push_navigate(to: "/admin/crm", replace: true)}
+             |> push_navigate(to: Paths.index(), replace: true)}
 
           role ->
             current_user = socket.assigns.phoenix_kit_current_user
@@ -68,7 +68,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
         toggleable
         items={@users}
         card_title={fn u -> u.email end}
-        card_fields={fn u -> Enum.map(@selected_columns, &card_field(&1, u)) end}
+        card_fields={fn u -> Enum.map(@selected_columns, &card_field(@scope, &1, u)) end}
       >
         <:toolbar_actions>
           <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
@@ -79,7 +79,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
         <TableDefault.table_default_header>
           <TableDefault.table_default_row>
             <TableDefault.table_default_header_cell :for={col <- @selected_columns}>
-              {column_label(col)}
+              {column_label(@scope, col)}
             </TableDefault.table_default_header_cell>
           </TableDefault.table_default_row>
         </TableDefault.table_default_header>
@@ -111,14 +111,15 @@ defmodule PhoenixKitCRM.Web.RoleView do
     """
   end
 
-  defp column_label(col) do
-    case ColumnConfig.get_column_metadata({:role, nil}, col) do
+  defp column_label(scope, col) do
+    case ColumnConfig.get_column_metadata(scope, col) do
       %{label: label} -> label
       _ -> col
     end
   end
 
-  defp card_field(col, user), do: %{label: column_label(col), value: render_cell(col, user)}
+  defp card_field(scope, col, user),
+    do: %{label: column_label(scope, col), value: render_cell(col, user)}
 
   defp render_cell("email", u), do: u.email
   defp render_cell("username", u), do: u.username || "—"

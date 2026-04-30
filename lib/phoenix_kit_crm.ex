@@ -9,6 +9,8 @@ defmodule PhoenixKitCRM do
 
   use PhoenixKit.Module
 
+  require Logger
+
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Settings
 
@@ -122,9 +124,16 @@ defmodule PhoenixKitCRM do
     try do
       PhoenixKit.Dashboard.Registry.unregister(:phoenix_kit_crm_roles)
     rescue
-      _ -> :ok
+      e ->
+        Logger.warning(
+          "[PhoenixKitCRM] refresh_sidebar unregister rescue: #{Exception.message(e)}"
+        )
+
+        :ok
     catch
-      :exit, _ -> :ok
+      :exit, reason ->
+        Logger.warning("[PhoenixKitCRM] refresh_sidebar unregister exit: #{inspect(reason)}")
+        :ok
     end
 
     PhoenixKitCRM.SidebarBootstrap.run()

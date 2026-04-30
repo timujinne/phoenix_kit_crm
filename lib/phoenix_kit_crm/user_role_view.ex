@@ -8,6 +8,8 @@ defmodule PhoenixKitCRM.UserRoleView do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.UserRoleViewConfig
 
@@ -31,6 +33,10 @@ defmodule PhoenixKitCRM.UserRoleView do
   @doc """
   Decodes a scope string to its term representation.
 
+  Falls back to `:companies` and logs a warning on malformed input —
+  this defends against data corruption (manual DB edits, broken imports)
+  causing render-time `FunctionClauseError`s deep in a LiveView.
+
   ## Examples
 
       iex> scope_from_string("companies")
@@ -42,6 +48,14 @@ defmodule PhoenixKitCRM.UserRoleView do
   @spec scope_from_string(String.t()) :: scope()
   def scope_from_string("companies"), do: :companies
   def scope_from_string("role:" <> uuid), do: {:role, uuid}
+
+  def scope_from_string(other) do
+    Logger.warning(
+      "[PhoenixKitCRM] Unknown scope string #{inspect(other)} — falling back to :companies"
+    )
+
+    :companies
+  end
 
   @doc """
   Returns the view config for a user and scope.

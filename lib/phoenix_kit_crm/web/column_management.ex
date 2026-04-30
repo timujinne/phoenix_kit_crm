@@ -35,13 +35,14 @@ defmodule PhoenixKitCRM.Web.ColumnManagement do
       end
 
       def handle_event("add_column", %{"column_id" => id}, socket) do
+        valid_ids = ColumnConfig.all_column_ids(socket.assigns.scope)
         temp = socket.assigns.temp_selected_columns || socket.assigns.selected_columns
 
         new_temp =
-          if id in temp do
-            temp
-          else
-            temp ++ [id]
+          cond do
+            id not in valid_ids -> temp
+            id in temp -> temp
+            true -> temp ++ [id]
           end
 
         {:noreply, Phoenix.Component.assign(socket, :temp_selected_columns, new_temp)}

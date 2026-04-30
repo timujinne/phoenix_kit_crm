@@ -62,7 +62,7 @@ defmodule PhoenixKitCRM.Web.CompaniesView do
         toggleable
         items={@companies}
         card_title={fn c -> Map.get(c, :name, "—") end}
-        card_fields={fn c -> Enum.map(@selected_columns, &card_field(&1, c)) end}
+        card_fields={fn c -> Enum.map(@selected_columns, &card_field(@scope, &1, c)) end}
       >
         <:toolbar_actions>
           <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
@@ -73,7 +73,7 @@ defmodule PhoenixKitCRM.Web.CompaniesView do
         <TableDefault.table_default_header>
           <TableDefault.table_default_row>
             <TableDefault.table_default_header_cell :for={col <- @selected_columns}>
-              {column_label(col)}
+              {column_label(@scope, col)}
             </TableDefault.table_default_header_cell>
           </TableDefault.table_default_row>
         </TableDefault.table_default_header>
@@ -105,14 +105,15 @@ defmodule PhoenixKitCRM.Web.CompaniesView do
     """
   end
 
-  defp column_label(col) do
-    case ColumnConfig.get_column_metadata(:companies, col) do
+  defp column_label(scope, col) do
+    case ColumnConfig.get_column_metadata(scope, col) do
       %{label: label} -> label
       _ -> col
     end
   end
 
-  defp card_field(col, company), do: %{label: column_label(col), value: render_cell(col, company)}
+  defp card_field(scope, col, company),
+    do: %{label: column_label(scope, col), value: render_cell(col, company)}
 
   defp render_cell("name", c), do: Map.get(c, :name, "—")
   defp render_cell("tax_id", c), do: Map.get(c, :tax_id, "—")
