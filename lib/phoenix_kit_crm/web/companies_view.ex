@@ -24,7 +24,7 @@ defmodule PhoenixKitCRM.Web.CompaniesView do
       not Settings.get_boolean_setting("crm_companies_enabled", false) ->
         {:ok,
          socket
-         |> put_flash(:error, "Companies section is not enabled.")
+         |> put_flash(:error, gettext("Companies section is not enabled."))
          |> push_navigate(to: Paths.index(), replace: true)}
 
       true ->
