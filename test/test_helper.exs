@@ -85,7 +85,6 @@ repo_available =
 
 Application.put_env(:phoenix_kit_crm, :test_repo_available, repo_available)
 
-
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
