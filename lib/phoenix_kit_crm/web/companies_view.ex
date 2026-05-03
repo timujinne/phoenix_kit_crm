@@ -30,13 +30,25 @@ defmodule PhoenixKitCRM.Web.CompaniesView do
       true ->
         current_user = socket.assigns.phoenix_kit_current_user
 
-        socket =
-          socket
-          |> assign(:page_title, "CRM — Companies / Юрлица")
-          |> assign(:companies, [])
-          |> assign_column_state(:companies, current_user.uuid)
+        {:ok,
+         socket
+         |> assign(:page_title, "CRM — Companies / Юрлица")
+         |> assign(:companies, [])
+         |> assign(:scope, :companies)
+         |> assign(:current_user_uuid, current_user.uuid)
+         |> assign(:selected_columns, ColumnConfig.default_columns(:companies))
+         |> assign(:show_column_modal, false)
+         |> assign(:temp_selected_columns, nil)}
+    end
+  end
 
-        {:ok, socket}
+  @impl true
+  def handle_params(_params, _url, socket) do
+    if connected?(socket) do
+      selected = ColumnConfig.get_columns(socket.assigns.current_user_uuid, :companies)
+      {:noreply, assign(socket, :selected_columns, selected)}
+    else
+      {:noreply, socket}
     end
   end
 

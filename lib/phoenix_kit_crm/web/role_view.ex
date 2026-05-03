@@ -36,19 +36,35 @@ defmodule PhoenixKitCRM.Web.RoleView do
              |> push_navigate(to: Paths.index(), replace: true)}
 
           role ->
-            current_user = socket.assigns.phoenix_kit_current_user
-            users = Roles.users_with_role(role.name)
             scope = {:role, role_uuid}
+            current_user = socket.assigns.phoenix_kit_current_user
 
-            socket =
-              socket
-              |> assign(:page_title, "CRM — #{role.name}")
-              |> assign(:role, role)
-              |> assign(:users, users)
-              |> assign_column_state(scope, current_user.uuid)
-
-            {:ok, socket}
+            {:ok,
+             socket
+             |> assign(:page_title, "CRM — #{role.name}")
+             |> assign(:role, role)
+             |> assign(:scope, scope)
+             |> assign(:current_user_uuid, current_user.uuid)
+             |> assign(:users, [])
+             |> assign(:selected_columns, ColumnConfig.default_columns(scope))
+             |> assign(:show_column_modal, false)
+             |> assign(:temp_selected_columns, nil)}
         end
+    end
+  end
+
+  @impl true
+  def handle_params(_params, _url, socket) do
+    if connected?(socket) do
+      users = Roles.users_with_role(socket.assigns.role.name)
+      selected = ColumnConfig.get_columns(socket.assigns.current_user_uuid, socket.assigns.scope)
+
+      {:noreply,
+       socket
+       |> assign(:users, users)
+       |> assign(:selected_columns, selected)}
+    else
+      {:noreply, socket}
     end
   end
 
