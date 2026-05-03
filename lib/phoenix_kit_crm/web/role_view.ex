@@ -18,13 +18,13 @@ defmodule PhoenixKitCRM.Web.RoleView do
       not PhoenixKitCRM.enabled?() ->
         {:ok,
          socket
-         |> put_flash(:error, "CRM is not enabled.")
+         |> put_flash(:error, gettext("CRM is not enabled."))
          |> push_navigate(to: Paths.index(), replace: true)}
 
       not PhoenixKitCRM.RoleSettings.enabled?(role_uuid) ->
         {:ok,
          socket
-         |> put_flash(:error, "This role does not have CRM access.")
+         |> put_flash(:error, gettext("This role does not have CRM access."))
          |> push_navigate(to: Paths.index(), replace: true)}
 
       true ->
@@ -32,7 +32,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
           nil ->
             {:ok,
              socket
-             |> put_flash(:error, "Role not found.")
+             |> put_flash(:error, gettext("Role not found."))
              |> push_navigate(to: Paths.index(), replace: true)}
 
           role ->
@@ -41,7 +41,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
 
             {:ok,
              socket
-             |> assign(:page_title, "CRM — #{role.name}")
+             |> assign(:page_title, gettext("CRM — %{name}", name: role.name))
              |> assign(:role, role)
              |> assign(:scope, scope)
              |> assign(:current_user_uuid, current_user.uuid)
