@@ -16,6 +16,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
 
   alias PhoenixKitCRM.{UserRoleView, UserRoleViewConfig}
 
+  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO(i18n): wrap column labels with gettext/1 — see dev_docs/cleanup_post_pr1/SPEC.md B3
   @role_standard %{
     "email" => %{label: "Email", required: false, type: :email},
@@ -27,6 +28,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
     "location" => %{label: "Location", required: false, type: :location}
   }
 
+  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO(i18n): wrap column labels with gettext/1 — see dev_docs/cleanup_post_pr1/SPEC.md B3
   @companies_standard %{
     "name" => %{label: "Название", required: false, type: :string},
