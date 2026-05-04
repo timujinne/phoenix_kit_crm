@@ -18,13 +18,13 @@ defmodule PhoenixKitCRM.Web.RoleView do
       not PhoenixKitCRM.enabled?() ->
         {:ok,
          socket
-         |> put_flash(:error, "CRM is not enabled.")
+         |> put_flash(:error, gettext("CRM is not enabled."))
          |> push_navigate(to: Paths.index(), replace: true)}
 
       not PhoenixKitCRM.RoleSettings.enabled?(role_uuid) ->
         {:ok,
          socket
-         |> put_flash(:error, "This role does not have CRM access.")
+         |> put_flash(:error, gettext("This role does not have CRM access."))
          |> push_navigate(to: Paths.index(), replace: true)}
 
       true ->
@@ -32,23 +32,39 @@ defmodule PhoenixKitCRM.Web.RoleView do
           nil ->
             {:ok,
              socket
-             |> put_flash(:error, "Role not found.")
+             |> put_flash(:error, gettext("Role not found."))
              |> push_navigate(to: Paths.index(), replace: true)}
 
           role ->
-            current_user = socket.assigns.phoenix_kit_current_user
-            users = Roles.users_with_role(role.name)
             scope = {:role, role_uuid}
+            current_user = socket.assigns.phoenix_kit_current_user
 
-            socket =
-              socket
-              |> assign(:page_title, "CRM — #{role.name}")
-              |> assign(:role, role)
-              |> assign(:users, users)
-              |> assign_column_state(scope, current_user.uuid)
-
-            {:ok, socket}
+            {:ok,
+             socket
+             |> assign(:page_title, gettext("CRM — %{name}", name: role.name))
+             |> assign(:role, role)
+             |> assign(:scope, scope)
+             |> assign(:current_user_uuid, current_user.uuid)
+             |> assign(:users, [])
+             |> assign(:selected_columns, ColumnConfig.default_columns(scope))
+             |> assign(:show_column_modal, false)
+             |> assign(:temp_selected_columns, nil)}
         end
+    end
+  end
+
+  @impl true
+  def handle_params(_params, _url, socket) do
+    if connected?(socket) do
+      users = Roles.users_with_role(socket.assigns.role.name)
+      selected = ColumnConfig.get_columns(socket.assigns.current_user_uuid, socket.assigns.scope)
+
+      {:noreply,
+       socket
+       |> assign(:users, users)
+       |> assign(:selected_columns, selected)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -140,11 +156,15 @@ defmodule PhoenixKitCRM.Web.RoleView do
     end
   end
 
-  defp crm_status_html(true),
-    do: Phoenix.HTML.raw(~s(<span class="badge badge-sm badge-success">Active</span>))
+  defp crm_status_html(true) do
+    assigns = %{}
+    ~H|<.status_badge status="active" size={:sm} />|
+  end
 
-  defp crm_status_html(_),
-    do: Phoenix.HTML.raw(~s(<span class="badge badge-sm badge-ghost">Inactive</span>))
+  defp crm_status_html(_) do
+    assigns = %{}
+    ~H|<.status_badge status="inactive" size={:sm} />|
+  end
 
   defp format_date(nil), do: "—"
   defp format_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d")

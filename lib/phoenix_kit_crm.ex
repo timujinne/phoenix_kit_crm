@@ -8,6 +8,7 @@ defmodule PhoenixKitCRM do
   """
 
   use PhoenixKit.Module
+  use Gettext, backend: PhoenixKitWeb.Gettext
 
   require Logger
 
@@ -57,7 +58,7 @@ defmodule PhoenixKitCRM do
     [
       %Tab{
         id: :admin_crm,
-        label: "CRM",
+        label: gettext("CRM"),
         icon: "hero-users",
         path: "crm",
         priority: 650,
@@ -71,7 +72,7 @@ defmodule PhoenixKitCRM do
       },
       %Tab{
         id: :admin_crm_overview,
-        label: "Overview",
+        label: gettext("Overview"),
         icon: "hero-users",
         path: "crm",
         priority: 651,
@@ -83,8 +84,8 @@ defmodule PhoenixKitCRM do
       },
       %Tab{
         id: :admin_crm_companies,
-        label: "Companies",
-        path: "/admin/crm/companies",
+        label: gettext("Companies"),
+        path: "crm/companies",
         priority: 652,
         level: :admin,
         permission: module_key(),
