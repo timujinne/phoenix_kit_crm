@@ -60,7 +60,7 @@ defmodule PhoenixKitCRM.SidebarBootstrap do
     %Tab{
       id: :"crm_role_#{role.uuid}",
       label: role.name,
-      path: "crm/role/#{role.uuid}",
+      path: "/admin/crm/role/#{role.uuid}",
       priority: 660,
       level: :admin,
       permission: PhoenixKitCRM.module_key(),
