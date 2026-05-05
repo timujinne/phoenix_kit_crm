@@ -8,7 +8,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
   use PhoenixKitCRM.Web.ColumnManagement
 
   alias PhoenixKit.Users.Roles
-  alias PhoenixKitCRM.{ColumnConfig, Paths, Web.ColumnModal}
+  alias PhoenixKitCRM.{ColumnConfig, Paths, Web.CellFormat, Web.ColumnModal}
 
   alias PhoenixKitWeb.Components.Core.TableDefault
 
@@ -113,7 +113,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
             phx-value-uuid={user.uuid}
           >
             <TableDefault.table_default_cell :for={col <- @selected_columns}>
-              {render_cell(col, user)}
+              {render_cell(@scope, col, user)}
             </TableDefault.table_default_cell>
           </TableDefault.table_default_row>
 
@@ -145,44 +145,20 @@ defmodule PhoenixKitCRM.Web.RoleView do
   end
 
   defp card_field(scope, col, user),
-    do: %{label: column_label(scope, col), value: render_cell(col, user)}
+    do: %{label: column_label(scope, col), value: render_cell(scope, col, user)}
 
-  defp render_cell("email", u), do: u.email
-  defp render_cell("username", u), do: u.username || "—"
-  defp render_cell("full_name", u), do: full_name(u)
-  defp render_cell("status", u), do: crm_status_html(u.is_active)
-  defp render_cell("registered", u), do: format_date(u.inserted_at)
-  defp render_cell("last_confirmed", u), do: format_date(u.confirmed_at)
-  defp render_cell("location", u), do: location(u)
+  defp render_cell(_scope, "email", u), do: u.email
+  defp render_cell(_scope, "username", u), do: u.username || "—"
+  defp render_cell(_scope, "full_name", u), do: full_name(u)
+  defp render_cell(_scope, "status", u), do: crm_status_html(u.is_active)
+  defp render_cell(_scope, "registered", u), do: format_date(u.inserted_at)
+  defp render_cell(_scope, "last_confirmed", u), do: format_date(u.confirmed_at)
+  defp render_cell(_scope, "location", u), do: location(u)
 
-  defp render_cell("custom_" <> _ = col, u), do: render_custom_cell(col, u)
+  defp render_cell(scope, "custom_" <> _ = col, u),
+    do: CellFormat.render_custom_cell(scope, col, u)
 
-  defp render_cell(_, _), do: "—"
-
-  defp render_custom_cell(col, user) do
-    case ColumnConfig.get_column_metadata({:role, nil}, col) do
-      %{type: :custom_field, field_key: key, field_type: type} ->
-        format_custom_value(Map.get(user.custom_fields || %{}, key), type)
-
-      _ ->
-        "—"
-    end
-  end
-
-  defp format_custom_value(nil, _), do: "—"
-  defp format_custom_value("", _), do: "—"
-  defp format_custom_value(true, "boolean"), do: gettext("Yes")
-  defp format_custom_value(false, "boolean"), do: gettext("No")
-  defp format_custom_value("true", "boolean"), do: gettext("Yes")
-  defp format_custom_value("false", "boolean"), do: gettext("No")
-  defp format_custom_value(true, "checkbox"), do: gettext("Yes")
-  defp format_custom_value(false, "checkbox"), do: gettext("No")
-  defp format_custom_value(list, "checkbox") when is_list(list), do: Enum.join(list, ", ")
-  defp format_custom_value(%Date{} = d, _), do: Date.to_string(d)
-  defp format_custom_value(%DateTime{} = dt, _), do: DateTime.to_string(dt)
-  defp format_custom_value(%NaiveDateTime{} = dt, _), do: NaiveDateTime.to_string(dt)
-  defp format_custom_value(value, _) when is_binary(value), do: value
-  defp format_custom_value(value, _), do: to_string(value)
+  defp render_cell(_scope, _col, _u), do: "—"
 
   defp full_name(u) do
     [Map.get(u, :first_name), Map.get(u, :last_name)]
