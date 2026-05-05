@@ -205,3 +205,51 @@ ngettext("…", "…", n, count: n)
 | PR description ↔ diff | ✅ Aligned (improvement over PR #3) |
 
 **Recommend:** ship the existing merge (already done), and open a follow-up PR moving `CRMLive` role-stat loading out of `mount/3` (combined with the N+1 fix) — that's the only change with a real reason to land before further feature work on the landing page.
+
+---
+
+## Handoff: fixes landed on main
+
+Fixes are committed directly to `main` — no branch, no PR. Tim picks up review/manual-verification on the head commit.
+
+- **Commit:** `8e089db` — *"Address PR #4 review: lifecycle, query shape, render hot path"*
+- **Stat:** 10 files / +188 / −97 (8 lib, 2 test, plus mix.lock dep bumps)
+
+### What's implemented
+
+| # | Issue | Fix | Notes |
+|---|---|---|---|
+| 1 | 🚨 DB queries in `CRMLive.mount/3` | `mount/3` now only assigns defaults; `handle_params/3` loads `role_stats` gated on `connected?/1` | Mirrors the pattern `RoleView` already uses |
+| 2 | ⚠️ N+1 across `count_users_with_role/1` | New `RoleSettings.list_enabled_with_user_counts/0` — single GROUP BY with `left_join` over `RoleAssignment`. `CRMLive` calls this instead of the loop | Left join means roles with zero users still surface (`count = 0`) |
+| 3 | ⚠️ Per-cell `available_columns/1` recomputation | New `ColumnConfig.column_metadata_map/1` returning `%{column_id => meta}`. Views compute it once in `mount` + `handle_params`, assign as `:column_meta`, and thread it through `render_cell/3`, `card_field/3`, `column_label/2`, `CellFormat.render_custom_cell/3`. `ColumnModal` does the same lookup once at the top of the function component | API change: `render_custom_cell/3` second arg switched from `scope` to `column_meta` map. `column_label/2` and `card_field/3` similarly take the map. Internal helpers — no public-API impact outside CRM |
+| 4 | 🟡 `field["key"]` unguarded | `Enum.filter(&is_binary(&1["key"]))` upstream of the `Enum.map` in `custom_field_columns/0` | Malformed definition is now silently skipped; debatable whether to log it |
+| 5 | 🟡 Mixed gettext call style in `crm_live.ex` | Switched long-form `Gettext.gettext(PhoenixKitWeb.Gettext, …)` / `Gettext.dngettext(…, "default", …)` to short `gettext/ngettext`, which is in scope via `use PhoenixKitWeb, :live_view` | Matches `RoleView` / `OrganizationsView` |
+
+### Tests added
+
+- `cell_format_test.exs` — `render_custom_cell/3` describe block covering: lookup hit, unknown column id, missing user value, `nil` `custom_fields`, boolean field-type formatting. Existing `format_custom_value/2` tests untouched.
+- `column_config_test.exs` — `column_metadata_map/1` describe: returns a flat map; covers every id from `all_column_ids/1`.
+- Both files use `use ExUnit.Case, async: true` (no DB needed for these specific tests; pure functional).
+
+**Not run** — the review environment had no DB. `mix test` end-to-end is on Tim's side.
+
+### Dep bumps included
+
+`mix deps.update --all` was run alongside the fixes, bumping: `bandit`, `ecto`, `jason`, `leaf`, `phoenix`, `phoenix_kit`, `phoenix_live_view`, `postgrex`. Patch / minor only — no constraint changes in `mix.exs`. If you'd rather isolate the dep bumps, the `mix.lock` change can be reverted with `git checkout 8e089db^ -- mix.lock` and committed separately.
+
+### What Tim needs to do
+
+1. **Verify locally.** Pull `main` and run:
+   - `mix compile --warnings-as-errors` ✓ (clean at `8e089db`)
+   - `mix format --check-formatted` ✓ (clean)
+   - `mix credo --strict` ✓ (clean)
+   - `mix test` — **not yet run**; please confirm.
+   - `mix dialyzer` — **not yet run**; the `column_metadata_map/1` spec and `render_custom_cell/3` signature change are the most likely friction points.
+2. **Manually walk the CRM overview page** (`/admin/crm`) with a few CRM-enabled roles to confirm the new `handle_params` flow renders cards correctly, including the empty-state and zero-user-role cases.
+3. **Decide whether Issue 4 should log when a malformed definition is dropped.** Current behavior silently filters; a `Logger.warning/1` with the offending entry would be one extra line and probably worth it.
+4. **If anything is wrong, revert directly on main** — `git revert 8e089db` (or just the relevant hunks). No branch / PR overhead either way.
+
+### What was not addressed
+
+- **Branch protection on `main`** (recurring process recommendation from PR #2/#3 reviews). Owned by repo admin, not a code change.
+- **PR description ↔ diff discipline.** N/A — PR #4's description was accurate; this was a praise note, not a deficiency.
