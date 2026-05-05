@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-05-05
+
+Bug fixes and performance hardening from the PR #4 retrospective review:
+LiveView lifecycle correctness on the CRM landing page, an N+1 query
+collapse, and a per-cell render hot-path optimization. No breaking
+changes — patch release.
+
+### Fixed
+
+- **CRMLive lifecycle.** Role-stat loading moved out of `mount/3`
+  (which fires twice per connect — HTTP + WebSocket) into
+  `handle_params/3` gated on `connected?/1`. Eliminates duplicate
+  queries on every CRM landing-page render.
+- **N+1 across enabled roles.** New
+  `PhoenixKitCRM.RoleSettings.list_enabled_with_user_counts/0` issues
+  a single GROUP BY with a left join over `RoleAssignment`, replacing
+  one `Roles.count_users_with_role/1` round-trip per role. Roles with
+  zero users still surface (count = 0) thanks to the left join.
+- **Per-cell `available_columns/1` recomputation.** Custom-cell render
+  no longer rebuilds the full `[{id, meta}]` list per cell. Views
+  compute `ColumnConfig.column_metadata_map/1` once per render and
+  pass the resolved map through `render_cell/3`, `card_field/3`,
+  `column_label/2`, and `CellFormat.render_custom_cell/3`.
+  `ColumnModal` does the same lookup once at the top of the function
+  component.
+- **Unguarded `field["key"]` in custom-field columns.** Malformed
+  custom field definitions (no `"key"`) no longer crash the page with
+  `ArgumentError: argument for <> is not a binary` — they're filtered
+  upstream of the `Enum.map`.
+- **Gettext call-style consistency in `CRMLive`.** Switched long-form
+  `Gettext.gettext/dngettext(PhoenixKitWeb.Gettext, …)` to the short
+  `gettext/ngettext` already in scope via
+  `use PhoenixKitWeb, :live_view`, matching `RoleView` /
+  `OrganizationsView`.
+
+### Added
+
+- `PhoenixKitCRM.ColumnConfig.column_metadata_map/1` — flat
+  `%{column_id => meta}` map for callers that need lookup-by-id without
+  rebuilding the available-columns list per call.
+- `PhoenixKitCRM.RoleSettings.list_enabled_with_user_counts/0` — single
+  GROUP BY query for the CRM overview.
+
+### Changed
+
+- `PhoenixKitCRM.Web.CellFormat.render_custom_cell/3` second arg is
+  now a `column_meta` map (not a scope). Internal callers within CRM
+  are updated; `CellFormat` was introduced in 0.2.0's PR #4 follow-ups
+  and has not been released until now, so no upgraders are affected.
+- Dependencies refreshed via `mix deps.update --all`: `bandit`, `ecto`,
+  `jason`, `leaf`, `phoenix`, `phoenix_kit`, `phoenix_live_view`,
+  `postgrex`. Patch / minor only — no constraint changes in `mix.exs`.
+
 ## [0.2.0] - 2026-05-04
 
 Companies → Organizations pivot, i18n foundation, LiveView lifecycle
