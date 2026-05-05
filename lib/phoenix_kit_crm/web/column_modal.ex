@@ -31,11 +31,13 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
 
   def column_modal(assigns) do
     available = ColumnConfig.available_columns(assigns.scope)
+    column_meta = Map.new(available.standard ++ available.custom)
     current = assigns.temp_selected || assigns.selected
 
     assigns =
       assigns
       |> assign(:available, available)
+      |> assign(:column_meta, column_meta)
       |> assign(:current, current)
 
     ~H"""
@@ -67,7 +69,7 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
                   item_class="flex items-center p-3 rounded-lg bg-primary/10 border border-primary/30 hover:bg-primary/20"
                 >
                   <:item :let={column_id}>
-                    <% meta = ColumnConfig.get_column_metadata(@scope, column_id) %>
+                    <% meta = Map.get(@column_meta, column_id) %>
                     <div class="text-primary/60 mr-3">
                       <.icon name="hero-bars-3" class="h-5 w-5" />
                     </div>

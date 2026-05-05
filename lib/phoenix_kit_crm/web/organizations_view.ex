@@ -42,6 +42,7 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
          |> assign(:current_user_uuid, current_user.uuid)
          |> assign(:users, [])
          |> assign(:selected_columns, ColumnConfig.default_columns(:organizations))
+         |> assign(:column_meta, ColumnConfig.column_metadata_map(:organizations))
          |> assign(:show_column_modal, false)
          |> assign(:temp_selected_columns, nil)}
     end
@@ -56,7 +57,8 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
       {:noreply,
        socket
        |> assign(:users, users)
-       |> assign(:selected_columns, selected)}
+       |> assign(:selected_columns, selected)
+       |> assign(:column_meta, ColumnConfig.column_metadata_map(:organizations))}
     else
       {:noreply, socket}
     end
@@ -87,7 +89,7 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
         toggleable
         items={@users}
         card_title={fn u -> card_title_link(u) end}
-        card_fields={fn u -> Enum.map(@selected_columns, &card_field(@scope, &1, u)) end}
+        card_fields={fn u -> Enum.map(@selected_columns, &card_field(@column_meta, &1, u)) end}
       >
         <:toolbar_actions>
           <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
@@ -98,7 +100,7 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
         <TableDefault.table_default_header>
           <TableDefault.table_default_row>
             <TableDefault.table_default_header_cell :for={col <- @selected_columns}>
-              {column_label(@scope, col)}
+              {column_label(@column_meta, col)}
             </TableDefault.table_default_header_cell>
           </TableDefault.table_default_row>
         </TableDefault.table_default_header>
@@ -111,7 +113,7 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
             phx-value-uuid={user.uuid}
           >
             <TableDefault.table_default_cell :for={col <- @selected_columns}>
-              {render_cell(@scope, col, user)}
+              {render_cell(@column_meta, col, user)}
             </TableDefault.table_default_cell>
           </TableDefault.table_default_row>
 
@@ -135,28 +137,28 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
     """
   end
 
-  defp column_label(scope, col) do
-    case ColumnConfig.get_column_metadata(scope, col) do
+  defp column_label(column_meta, col) do
+    case Map.get(column_meta, col) do
       %{label: label} -> label
       _ -> col
     end
   end
 
-  defp card_field(scope, col, user),
-    do: %{label: column_label(scope, col), value: render_cell(scope, col, user)}
+  defp card_field(column_meta, col, user),
+    do: %{label: column_label(column_meta, col), value: render_cell(column_meta, col, user)}
 
-  defp render_cell(_scope, "organization_name", u), do: Map.get(u, :organization_name) || "—"
-  defp render_cell(_scope, "email", u), do: u.email
-  defp render_cell(_scope, "username", u), do: Map.get(u, :username) || "—"
-  defp render_cell(_scope, "full_name", u), do: full_name(u)
-  defp render_cell(_scope, "status", u), do: crm_status_html(Map.get(u, :is_active))
-  defp render_cell(_scope, "registered", u), do: format_date(Map.get(u, :inserted_at))
-  defp render_cell(_scope, "location", u), do: location(u)
+  defp render_cell(_meta, "organization_name", u), do: Map.get(u, :organization_name) || "—"
+  defp render_cell(_meta, "email", u), do: u.email
+  defp render_cell(_meta, "username", u), do: Map.get(u, :username) || "—"
+  defp render_cell(_meta, "full_name", u), do: full_name(u)
+  defp render_cell(_meta, "status", u), do: crm_status_html(Map.get(u, :is_active))
+  defp render_cell(_meta, "registered", u), do: format_date(Map.get(u, :inserted_at))
+  defp render_cell(_meta, "location", u), do: location(u)
 
-  defp render_cell(scope, "custom_" <> _ = col, u),
-    do: CellFormat.render_custom_cell(scope, col, u)
+  defp render_cell(meta, "custom_" <> _ = col, u),
+    do: CellFormat.render_custom_cell(meta, col, u)
 
-  defp render_cell(_scope, _col, _u), do: "—"
+  defp render_cell(_meta, _col, _u), do: "—"
 
   defp full_name(u) do
     [Map.get(u, :first_name), Map.get(u, :last_name)]

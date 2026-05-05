@@ -94,4 +94,20 @@ defmodule PhoenixKitCRM.ColumnConfigTest do
       assert %{label: _, type: _} = ColumnConfig.get_column_metadata({:role, "uuid"}, "email")
     end
   end
+
+  describe "column_metadata_map/1" do
+    test "returns a flat %{column_id => meta} map merging standard and custom entries" do
+      map = ColumnConfig.column_metadata_map(:organizations)
+      assert is_map(map)
+      assert match?(%{label: _, type: _}, Map.fetch!(map, "organization_name"))
+      assert match?(%{label: _, type: _}, Map.fetch!(map, "email"))
+    end
+
+    test "covers every id from all_column_ids/1" do
+      scope = {:role, "uuid"}
+      map = ColumnConfig.column_metadata_map(scope)
+      ids = ColumnConfig.all_column_ids(scope)
+      assert Enum.all?(ids, &Map.has_key?(map, &1))
+    end
+  end
 end

@@ -3,6 +3,52 @@ defmodule PhoenixKitCRM.Web.CellFormatTest do
 
   alias PhoenixKitCRM.Web.CellFormat
 
+  describe "render_custom_cell/3" do
+    test "looks up metadata in the column_meta map and formats by field_type" do
+      meta = %{
+        "custom_phone" => %{
+          type: :custom_field,
+          field_key: "phone",
+          field_type: "string"
+        }
+      }
+
+      user = %{custom_fields: %{"phone" => "+1-555-0100"}}
+
+      assert CellFormat.render_custom_cell(meta, "custom_phone", user) == "+1-555-0100"
+    end
+
+    test "returns em-dash when the column id is unknown in the meta map" do
+      user = %{custom_fields: %{"phone" => "x"}}
+      assert CellFormat.render_custom_cell(%{}, "custom_phone", user) == "—"
+    end
+
+    test "returns em-dash when the user has no value for the field" do
+      meta = %{
+        "custom_phone" => %{type: :custom_field, field_key: "phone", field_type: "string"}
+      }
+
+      assert CellFormat.render_custom_cell(meta, "custom_phone", %{custom_fields: %{}}) == "—"
+    end
+
+    test "tolerates nil custom_fields on the user" do
+      meta = %{
+        "custom_phone" => %{type: :custom_field, field_key: "phone", field_type: "string"}
+      }
+
+      assert CellFormat.render_custom_cell(meta, "custom_phone", %{custom_fields: nil}) == "—"
+    end
+
+    test "uses field_type to format booleans" do
+      meta = %{
+        "custom_active" => %{type: :custom_field, field_key: "active", field_type: "boolean"}
+      }
+
+      user = %{custom_fields: %{"active" => true}}
+      assert CellFormat.render_custom_cell(meta, "custom_active", user) == "Yes"
+    end
+  end
+
   describe "format_custom_value/2 — empty values" do
     test "nil renders em-dash" do
       assert CellFormat.format_custom_value(nil, "string") == "—"

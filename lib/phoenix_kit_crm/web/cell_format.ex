@@ -8,16 +8,19 @@ defmodule PhoenixKitCRM.Web.CellFormat do
 
   use Gettext, backend: PhoenixKitWeb.Gettext
 
-  alias PhoenixKitCRM.ColumnConfig
-
   @doc """
-  Renders a `"custom_<key>"` column for the given user. Looks up metadata in
-  the scope's column config; returns `"—"` if the column is unknown or the
-  value is missing.
+  Renders a `"custom_<key>"` column for the given user, given a resolved
+  `column_meta` map (`%{column_id => metadata}` — see
+  `PhoenixKitCRM.ColumnConfig.column_metadata_map/1`). Returns `"—"` if the
+  column is unknown or the value is missing.
+
+  Callers should compute `column_meta` once per render cycle and pass it
+  through, rather than calling `ColumnConfig.get_column_metadata/2` per cell.
   """
-  @spec render_custom_cell(any(), String.t(), map()) :: String.t()
-  def render_custom_cell(scope, "custom_" <> _ = column_id, user) do
-    case ColumnConfig.get_column_metadata(scope, column_id) do
+  @spec render_custom_cell(%{optional(String.t()) => map()}, String.t(), map()) :: String.t()
+  def render_custom_cell(column_meta, "custom_" <> _ = column_id, user)
+      when is_map(column_meta) do
+    case Map.get(column_meta, column_id) do
       %{type: :custom_field, field_key: key, field_type: type} ->
         format_custom_value(Map.get(user.custom_fields || %{}, key), type)
 

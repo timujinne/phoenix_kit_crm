@@ -6,7 +6,7 @@ defmodule PhoenixKitCRM.RoleSettings do
   import Ecto.Query, warn: false
 
   alias PhoenixKit.RepoHelper
-  alias PhoenixKit.Users.{Role, Roles}
+  alias PhoenixKit.Users.{Role, RoleAssignment, Roles}
   alias PhoenixKitCRM.RoleSetting
 
   @doc """
@@ -29,6 +29,37 @@ defmodule PhoenixKitCRM.RoleSettings do
         on: setting.role_uuid == role.uuid,
         where: setting.enabled == true,
         order_by: role.name
+      )
+
+    repo.all(query)
+  end
+
+  @doc """
+  Lists CRM-enabled roles with the count of users assigned to each role.
+
+  Single query — left-joins `role_assignments` so roles with zero users still
+  appear (count = 0). Used by the CRM overview page in place of N+1
+  `count_users_with_role/1` calls.
+
+  ## Examples
+
+      iex> list_enabled_with_user_counts()
+      [%{uuid: "...", name: "Manager", count: 3}, ...]
+  """
+  @spec list_enabled_with_user_counts() :: [%{uuid: binary(), name: String.t(), count: integer()}]
+  def list_enabled_with_user_counts do
+    repo = RepoHelper.repo()
+
+    query =
+      from(role in Role,
+        join: setting in RoleSetting,
+        on: setting.role_uuid == role.uuid,
+        left_join: assignment in RoleAssignment,
+        on: assignment.role_uuid == role.uuid,
+        where: setting.enabled == true,
+        group_by: [role.uuid, role.name],
+        order_by: role.name,
+        select: %{uuid: role.uuid, name: role.name, count: count(assignment.uuid)}
       )
 
     repo.all(query)

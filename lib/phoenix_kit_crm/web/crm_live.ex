@@ -7,32 +7,25 @@ defmodule PhoenixKitCRM.Web.CRMLive do
   """
   use PhoenixKitWeb, :live_view
 
-  alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.{Paths, RoleSettings}
 
   @impl true
   def mount(_params, _session, socket) do
-    enabled = PhoenixKitCRM.enabled?()
-
-    role_stats =
-      if enabled do
-        for role <- RoleSettings.list_enabled() do
-          %{
-            uuid: role.uuid,
-            name: role.name,
-            count: Roles.count_users_with_role(role.name)
-          }
-        end
-      else
-        []
-      end
-
     {:ok,
      assign(socket,
-       page_title: Gettext.gettext(PhoenixKitWeb.Gettext, "CRM"),
-       enabled: enabled,
-       role_stats: role_stats
+       page_title: gettext("CRM"),
+       enabled: PhoenixKitCRM.enabled?(),
+       role_stats: []
      )}
+  end
+
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    if connected?(socket) and socket.assigns.enabled do
+      {:noreply, assign(socket, :role_stats, RoleSettings.list_enabled_with_user_counts())}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -43,10 +36,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
         <div class="card-body items-center text-center">
           <h2 class="card-title text-3xl">CRM</h2>
           <p class="text-base-content/70 mt-1">
-            {Gettext.gettext(
-              PhoenixKitWeb.Gettext,
-              "This is a placeholder. CRM functionality will live here."
-            )}
+            {gettext("This is a placeholder. CRM functionality will live here.")}
           </p>
 
           <div class="flex flex-wrap justify-center gap-2 mt-4">
@@ -65,7 +55,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
           <div class="mt-4">
             <.link navigate={Paths.settings()} class="btn btn-outline btn-sm">
               <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-              {Gettext.gettext(PhoenixKitWeb.Gettext, "CRM settings")}
+              {gettext("CRM settings")}
             </.link>
           </div>
         </div>
@@ -74,15 +64,10 @@ defmodule PhoenixKitCRM.Web.CRMLive do
       <div :if={@enabled}>
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-lg font-semibold">
-            {Gettext.gettext(PhoenixKitWeb.Gettext, "Enabled roles")}
+            {gettext("Enabled roles")}
           </h3>
           <span class="text-sm text-base-content/60">
-            {Gettext.dngettext(
-              PhoenixKitWeb.Gettext,
-              "default",
-              "%{count} role",
-              "%{count} roles",
-              length(@role_stats),
+            {ngettext("%{count} role", "%{count} roles", length(@role_stats),
               count: length(@role_stats)
             )}
           </span>
@@ -92,10 +77,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
           <div class="card-body items-center text-center py-8 text-base-content/60">
             <.icon name="hero-user-group" class="w-8 h-8" />
             <p class="text-sm">
-              {Gettext.gettext(
-                PhoenixKitWeb.Gettext,
-                "No roles connected to CRM yet. Enable a role in CRM settings."
-              )}
+              {gettext("No roles connected to CRM yet. Enable a role in CRM settings.")}
             </p>
           </div>
         </div>
@@ -120,14 +102,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
                   <div class="min-w-0">
                     <div class="font-semibold truncate">{stat.name}</div>
                     <div class="text-xs text-base-content/60">
-                      {Gettext.dngettext(
-                        PhoenixKitWeb.Gettext,
-                        "default",
-                        "%{count} user",
-                        "%{count} users",
-                        stat.count,
-                        count: stat.count
-                      )}
+                      {ngettext("%{count} user", "%{count} users", stat.count, count: stat.count)}
                     </div>
                   </div>
                 </div>

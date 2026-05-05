@@ -63,6 +63,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
     case Code.ensure_loaded(CustomFields) do
       {:module, _} ->
         load_custom_fields()
+        |> Enum.filter(&is_binary(&1["key"]))
         |> Enum.map(fn field ->
           key = field["key"]
 
@@ -111,6 +112,19 @@ defmodule PhoenixKitCRM.ColumnConfig do
   def all_column_ids(scope) do
     %{standard: standard, custom: custom} = available_columns(scope)
     Enum.map(standard, &elem(&1, 0)) ++ Enum.map(custom, &elem(&1, 0))
+  end
+
+  @doc """
+  Returns a flat `%{column_id => metadata}` map for a scope.
+
+  Use this once per render cycle and pass the result through render helpers
+  (`render_cell`, `column_label`) instead of calling `get_column_metadata/2`
+  per cell — that path rebuilds `available_columns/1` on every lookup.
+  """
+  @spec column_metadata_map(UserRoleView.scope()) :: %{String.t() => map()}
+  def column_metadata_map(scope) do
+    %{standard: standard, custom: custom} = available_columns(scope)
+    Map.new(standard ++ custom)
   end
 
   @doc "Returns the selected column ids for a user+scope, falling back to defaults."
