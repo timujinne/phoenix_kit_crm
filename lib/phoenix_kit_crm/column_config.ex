@@ -16,6 +16,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
 
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  alias PhoenixKit.Users.CustomFields
   alias PhoenixKitCRM.{UserRoleView, UserRoleViewConfig}
 
   @role_standard %{
@@ -44,10 +45,36 @@ defmodule PhoenixKitCRM.ColumnConfig do
   @doc "Available columns for a scope, split into `:standard` and `:custom`."
   @spec available_columns(UserRoleView.scope()) :: %{standard: map(), custom: map()}
   def available_columns({:role, _}),
-    do: %{standard: translate_labels(@role_standard), custom: %{}}
+    do: %{standard: translate_labels(@role_standard), custom: custom_field_columns()}
 
   def available_columns(:organizations),
-    do: %{standard: translate_labels(@organizations_standard), custom: %{}}
+    do: %{standard: translate_labels(@organizations_standard), custom: custom_field_columns()}
+
+  defp custom_field_columns do
+    case Code.ensure_loaded(CustomFields) do
+      {:module, _} ->
+        try do
+          CustomFields.list_enabled_field_definitions()
+        rescue
+          _ -> []
+        end
+        |> Enum.into(%{}, fn field ->
+          key = field["key"]
+
+          {"custom_" <> key,
+           %{
+             label: field["label"] || key,
+             field_key: key,
+             field_type: field["type"],
+             required: false,
+             type: :custom_field
+           }}
+        end)
+
+      _ ->
+        %{}
+    end
+  end
 
   defp translate_labels(map) do
     Map.new(map, fn {k, v} ->

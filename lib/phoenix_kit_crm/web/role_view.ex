@@ -154,7 +154,35 @@ defmodule PhoenixKitCRM.Web.RoleView do
   defp render_cell("registered", u), do: format_date(u.inserted_at)
   defp render_cell("last_confirmed", u), do: format_date(u.confirmed_at)
   defp render_cell("location", u), do: location(u)
+
+  defp render_cell("custom_" <> _ = col, u), do: render_custom_cell(col, u)
+
   defp render_cell(_, _), do: "—"
+
+  defp render_custom_cell(col, user) do
+    case ColumnConfig.get_column_metadata({:role, nil}, col) do
+      %{type: :custom_field, field_key: key, field_type: type} ->
+        format_custom_value(Map.get(user.custom_fields || %{}, key), type)
+
+      _ ->
+        "—"
+    end
+  end
+
+  defp format_custom_value(nil, _), do: "—"
+  defp format_custom_value("", _), do: "—"
+  defp format_custom_value(true, "boolean"), do: gettext("Yes")
+  defp format_custom_value(false, "boolean"), do: gettext("No")
+  defp format_custom_value("true", "boolean"), do: gettext("Yes")
+  defp format_custom_value("false", "boolean"), do: gettext("No")
+  defp format_custom_value(true, "checkbox"), do: gettext("Yes")
+  defp format_custom_value(false, "checkbox"), do: gettext("No")
+  defp format_custom_value(list, "checkbox") when is_list(list), do: Enum.join(list, ", ")
+  defp format_custom_value(%Date{} = d, _), do: Date.to_string(d)
+  defp format_custom_value(%DateTime{} = dt, _), do: DateTime.to_string(dt)
+  defp format_custom_value(%NaiveDateTime{} = dt, _), do: NaiveDateTime.to_string(dt)
+  defp format_custom_value(value, _) when is_binary(value), do: value
+  defp format_custom_value(value, _), do: to_string(value)
 
   defp full_name(u) do
     [Map.get(u, :first_name), Map.get(u, :last_name)]
