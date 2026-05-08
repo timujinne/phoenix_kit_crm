@@ -17,7 +17,7 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
   """
 
   use Phoenix.Component
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
 

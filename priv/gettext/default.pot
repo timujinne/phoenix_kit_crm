@@ -1,0 +1,115 @@
+## This file is the .pot template for the phoenix_kit_crm
+## "default" Gettext domain. msgids here are tab/group labels and
+## tooltips registered with `gettext_backend: PhoenixKitCRM.Gettext`,
+## as well as UI strings from column_modal.ex and cell_format.ex.
+##
+## Tab labels are not extracted automatically by `mix gettext.extract`
+## (they live as plain strings in `Tab.new!(label: ...)`, not in a
+## `dgettext` macro call), so those entries are maintained manually.
+## When you add a new translatable label, add the msgid here and run
+## `mix gettext.merge priv/gettext` to propagate to every locale's
+## `default.po`.
+##
+## The remaining msgids below are auto-extracted from gettext() macro
+## calls in lib/ and will be refreshed by `mix gettext.extract`.
+
+msgid ""
+msgstr ""
+
+## Tab labels (manually maintained — not auto-extracted by mix gettext.extract)
+
+#: lib/phoenix_kit_crm.ex
+msgid "CRM"
+msgstr ""
+
+#: lib/phoenix_kit_crm.ex
+msgid "Overview"
+msgstr ""
+
+#: lib/phoenix_kit_crm.ex
+msgid "Organizations"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:143
+#, elixir-autogen, elixir-format
+msgid "All columns selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:150
+#, elixir-autogen, elixir-format
+msgid "Apply"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:99
+#, elixir-autogen, elixir-format
+msgid "Available"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:155
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:100
+#, elixir-autogen, elixir-format
+msgid "Click to add"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:125
+#, elixir-autogen, elixir-format
+msgid "Custom"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:46
+#, elixir-autogen, elixir-format
+msgid "Customize columns"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:152
+#, elixir-autogen, elixir-format
+msgid "Defaults"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:48
+#, elixir-autogen, elixir-format
+msgid "Drag selected columns to reorder, or click an available column to add it."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:58
+#, elixir-autogen, elixir-format
+msgid "Drag to reorder"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/cell_format.ex:37
+#: lib/phoenix_kit_crm/web/cell_format.ex:39
+#: lib/phoenix_kit_crm/web/cell_format.ex:41
+#, elixir-autogen, elixir-format
+msgid "No"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:93
+#, elixir-autogen, elixir-format
+msgid "No columns selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:84
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:57
+#, elixir-autogen, elixir-format
+msgid "Selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:106
+#, elixir-autogen, elixir-format
+msgid "Standard"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/cell_format.ex:36
+#: lib/phoenix_kit_crm/web/cell_format.ex:38
+#: lib/phoenix_kit_crm/web/cell_format.ex:40
+#, elixir-autogen, elixir-format
+msgid "Yes"
+msgstr ""

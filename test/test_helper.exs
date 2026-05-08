@@ -88,6 +88,23 @@ Application.put_env(:phoenix_kit_crm, :test_repo_available, repo_available)
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
-exclude = if repo_available, do: [], else: [:integration]
+i18n_api_available =
+  Code.ensure_loaded?(PhoenixKit.Dashboard.Tab) and
+    function_exported?(PhoenixKit.Dashboard.Tab, :localized_label, 1)
+
+unless i18n_api_available do
+  require Logger
+
+  Logger.info(
+    "[test_helper] PhoenixKit.Dashboard.Tab.localized_label/1 not available — " <>
+      "i18n tests excluded. They will run automatically once `phoenix_kit` is " <>
+      "upgraded to a release that ships the gettext_backend API."
+  )
+end
+
+exclude =
+  []
+  |> then(fn e -> if repo_available, do: e, else: [:integration | e] end)
+  |> then(fn e -> if i18n_api_available, do: e, else: [:requires_phoenix_kit_i18n_api | e] end)
 
 ExUnit.start(exclude: exclude)

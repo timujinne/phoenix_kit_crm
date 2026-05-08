@@ -14,7 +14,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
       "organization"`.
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   require Logger
 
@@ -98,7 +98,7 @@ defmodule PhoenixKitCRM.ColumnConfig do
 
   defp translate_labels(list) do
     Enum.map(list, fn {k, v} ->
-      {k, Map.update!(v, :label, &Gettext.gettext(PhoenixKitWeb.Gettext, &1))}
+      {k, Map.update!(v, :label, &Gettext.gettext(PhoenixKitCRM.Gettext, &1))}
     end)
   end
 
