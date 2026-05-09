@@ -96,6 +96,10 @@ defmodule PhoenixKitCRM.ColumnConfig do
       []
   end
 
+  # Long-form `Gettext.gettext/2` rather than the `gettext/1` macro: labels
+  # come from module-attribute data, not literal strings at the call site,
+  # so the macro can't be used and `mix gettext.extract` won't pick them up.
+  # The corresponding msgids are maintained manually in `priv/gettext/default.pot`.
   defp translate_labels(list) do
     Enum.map(list, fn {k, v} ->
       {k, Map.update!(v, :label, &Gettext.gettext(PhoenixKitCRM.Gettext, &1))}

@@ -3,12 +3,17 @@
 ## tooltips registered with `gettext_backend: PhoenixKitCRM.Gettext`,
 ## as well as UI strings from column_modal.ex and cell_format.ex.
 ##
-## Tab labels are not extracted automatically by `mix gettext.extract`
-## (they live as plain strings in `Tab.new!(label: ...)`, not in a
-## `dgettext` macro call), so those entries are maintained manually.
-## When you add a new translatable label, add the msgid here and run
-## `mix gettext.merge priv/gettext` to propagate to every locale's
-## `default.po`.
+## Two groups of msgids are maintained manually (NOT auto-extracted):
+##   1. Tab labels — plain strings in `Tab.new!(label: ...)`.
+##   2. Column labels — string literals stored in module attributes
+##      (`@role_standard`, `@organizations_standard` in column_config.ex)
+##      and translated at runtime via `Gettext.gettext(backend, label)`.
+##      `mix gettext.extract` only sees `gettext()` macro call sites,
+##      so these don't get picked up.
+##
+## When you add a new translatable label in either group, add the msgid
+## here and run `mix gettext.merge priv/gettext` to propagate to every
+## locale's `default.po`.
 ##
 ## The remaining msgids below are auto-extracted from gettext() macro
 ## calls in lib/ and will be refreshed by `mix gettext.extract`.
@@ -28,6 +33,45 @@ msgstr ""
 
 #: lib/phoenix_kit_crm.ex
 msgid "Organizations"
+msgstr ""
+
+## Column labels (manually maintained — module-attribute literals in
+## column_config.ex, translated at runtime; not auto-extracted)
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Contact"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Email"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Full Name"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Last Confirmed"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Location"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Organization"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Registered"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Status"
+msgstr ""
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Username"
 msgstr ""
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:143

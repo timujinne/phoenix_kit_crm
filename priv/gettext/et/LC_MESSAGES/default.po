@@ -23,6 +23,42 @@ msgstr "Ülevaade"
 msgid "Organizations"
 msgstr "Organisatsioonid"
 
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Contact"
+msgstr "Kontakt"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Email"
+msgstr "E-post"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Full Name"
+msgstr "Täisnimi"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Last Confirmed"
+msgstr "Viimati kinnitatud"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Location"
+msgstr "Asukoht"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Organization"
+msgstr "Organisatsioon"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Registered"
+msgstr "Registreeritud"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Status"
+msgstr "Staatus"
+
+#: lib/phoenix_kit_crm/column_config.ex
+msgid "Username"
+msgstr "Kasutajanimi"
+
 #: lib/phoenix_kit_crm/web/column_modal.ex:143
 #, elixir-autogen, elixir-format
 msgid "All columns selected"

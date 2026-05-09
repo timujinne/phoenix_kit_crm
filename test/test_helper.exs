@@ -103,8 +103,10 @@ unless i18n_api_available do
 end
 
 exclude =
-  []
-  |> then(fn e -> if repo_available, do: e, else: [:integration | e] end)
-  |> then(fn e -> if i18n_api_available, do: e, else: [:requires_phoenix_kit_i18n_api | e] end)
+  [
+    if(!repo_available, do: :integration),
+    if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
+  ]
+  |> Enum.reject(&is_nil/1)
 
 ExUnit.start(exclude: exclude)
