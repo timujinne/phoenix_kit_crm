@@ -1,7 +1,7 @@
 defmodule PhoenixKitCRM.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.2.2"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_crm"
 
   def project do
@@ -31,7 +31,7 @@ defmodule PhoenixKitCRM.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :phoenix_kit]
+      extra_applications: [:logger, :gettext, :phoenix_kit]
     ]
   end
 
@@ -66,6 +66,9 @@ defmodule PhoenixKitCRM.MixProject do
       # Dashboard tabs, and the admin layout this module renders into.
       {:phoenix_kit, "~> 1.7"},
 
+      # Per-module i18n — own Gettext backend for sidebar tab labels.
+      {:gettext, "~> 1.0"},
+
       # LiveView is needed for the admin pages.
       {:phoenix_live_view, "~> 1.1"},
 
@@ -89,7 +92,7 @@ defmodule PhoenixKitCRM.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 

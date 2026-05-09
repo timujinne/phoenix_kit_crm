@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-05-08
+
+### Added
+
+- Per-module Gettext backend (`PhoenixKitCRM.Gettext`) with `en`/`ru`/`et` catalogues for all admin sidebar tab labels (`CRM`, `Overview`, `Organizations`) and UI strings in `ColumnModal` and `CellFormat`. Requires `phoenix_kit` release that ships the `gettext_backend` Tab API ([BeamLabEU/phoenix_kit#522](https://github.com/BeamLabEU/phoenix_kit/pull/522)); on older releases tabs render raw English (graceful degradation).
+- All `use Gettext, backend: PhoenixKitWeb.Gettext` references in `PhoenixKitCRM` replaced with the module-owned `PhoenixKitCRM.Gettext` backend — the package no longer depends on the host app's Gettext module.
+
 ## [0.2.1] - 2026-05-05
 
 Bug fixes and performance hardening from the PR #4 retrospective review:

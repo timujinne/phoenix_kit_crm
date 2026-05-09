@@ -8,7 +8,6 @@ defmodule PhoenixKitCRM do
   """
 
   use PhoenixKit.Module
-  use Gettext, backend: PhoenixKitWeb.Gettext
 
   require Logger
 
@@ -56,9 +55,9 @@ defmodule PhoenixKitCRM do
   @impl PhoenixKit.Module
   def admin_tabs do
     [
-      %Tab{
+      Tab.new!(
         id: :admin_crm,
-        label: gettext("CRM"),
+        label: "CRM",
         icon: "hero-users",
         path: "/admin/crm",
         priority: 650,
@@ -68,11 +67,12 @@ defmodule PhoenixKitCRM do
         group: :admin_modules,
         subtab_display: :when_active,
         highlight_with_subtabs: false,
-        live_view: {PhoenixKitCRM.Web.CRMLive, :index}
-      },
-      %Tab{
+        live_view: {PhoenixKitCRM.Web.CRMLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
         id: :admin_crm_overview,
-        label: gettext("Overview"),
+        label: "Overview",
         icon: "hero-users",
         path: "/admin/crm",
         priority: 651,
@@ -80,11 +80,12 @@ defmodule PhoenixKitCRM do
         permission: module_key(),
         match: :exact,
         parent: :admin_crm,
-        live_view: {PhoenixKitCRM.Web.CRMLive, :index}
-      },
-      %Tab{
+        live_view: {PhoenixKitCRM.Web.CRMLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
         id: :admin_crm_organizations,
-        label: gettext("Organizations"),
+        label: "Organizations",
         path: "/admin/crm/organizations",
         priority: 652,
         level: :admin,
@@ -94,8 +95,9 @@ defmodule PhoenixKitCRM do
         live_view: {PhoenixKitCRM.Web.OrganizationsView, :index},
         visible: fn _scope ->
           Settings.get_boolean_setting("enable_organization_accounts", false)
-        end
-      }
+        end,
+        gettext_backend: PhoenixKitCRM.Gettext
+      )
     ]
   end
 
@@ -155,7 +157,8 @@ defmodule PhoenixKitCRM do
         parent: :admin_settings,
         permission: module_key(),
         match: :exact,
-        live_view: {PhoenixKitCRM.Web.SettingsLive, :index}
+        live_view: {PhoenixKitCRM.Web.SettingsLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
       )
     ]
   end

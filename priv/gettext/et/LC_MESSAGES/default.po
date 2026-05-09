@@ -1,0 +1,108 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: et\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: lib/phoenix_kit_crm.ex
+msgid "CRM"
+msgstr "CRM"
+
+#: lib/phoenix_kit_crm.ex
+msgid "Overview"
+msgstr "Ülevaade"
+
+#: lib/phoenix_kit_crm.ex
+msgid "Organizations"
+msgstr "Organisatsioonid"
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:143
+#, elixir-autogen, elixir-format
+msgid "All columns selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:150
+#, elixir-autogen, elixir-format
+msgid "Apply"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:99
+#, elixir-autogen, elixir-format
+msgid "Available"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:155
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:100
+#, elixir-autogen, elixir-format
+msgid "Click to add"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:125
+#, elixir-autogen, elixir-format
+msgid "Custom"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:46
+#, elixir-autogen, elixir-format
+msgid "Customize columns"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:152
+#, elixir-autogen, elixir-format
+msgid "Defaults"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:48
+#, elixir-autogen, elixir-format
+msgid "Drag selected columns to reorder, or click an available column to add it."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:58
+#, elixir-autogen, elixir-format
+msgid "Drag to reorder"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/cell_format.ex:37
+#: lib/phoenix_kit_crm/web/cell_format.ex:39
+#: lib/phoenix_kit_crm/web/cell_format.ex:41
+#, elixir-autogen, elixir-format
+msgid "No"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:93
+#, elixir-autogen, elixir-format
+msgid "No columns selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:84
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:57
+#, elixir-autogen, elixir-format
+msgid "Selected"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_modal.ex:106
+#, elixir-autogen, elixir-format
+msgid "Standard"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/cell_format.ex:36
+#: lib/phoenix_kit_crm/web/cell_format.ex:38
+#: lib/phoenix_kit_crm/web/cell_format.ex:40
+#, elixir-autogen, elixir-format
+msgid "Yes"
+msgstr ""

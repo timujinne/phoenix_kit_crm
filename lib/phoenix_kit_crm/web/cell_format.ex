@@ -6,7 +6,7 @@ defmodule PhoenixKitCRM.Web.CellFormat do
   and the `custom_*` cell renderer used by `RoleView` and `OrganizationsView`.
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   @doc """
   Renders a `"custom_<key>"` column for the given user, given a resolved
