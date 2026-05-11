@@ -62,83 +62,83 @@ msgstr "Kasutajanimi"
 #: lib/phoenix_kit_crm/web/column_modal.ex:143
 #, elixir-autogen, elixir-format
 msgid "All columns selected"
-msgstr ""
+msgstr "Kõik veerud valitud"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:150
 #, elixir-autogen, elixir-format
 msgid "Apply"
-msgstr ""
+msgstr "Rakenda"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:99
 #, elixir-autogen, elixir-format
 msgid "Available"
-msgstr ""
+msgstr "Saadaval"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:155
 #, elixir-autogen, elixir-format
 msgid "Cancel"
-msgstr ""
+msgstr "Tühista"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:100
 #, elixir-autogen, elixir-format
 msgid "Click to add"
-msgstr ""
+msgstr "Klõpsa lisamiseks"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:125
 #, elixir-autogen, elixir-format
 msgid "Custom"
-msgstr ""
+msgstr "Kohandatud"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:46
 #, elixir-autogen, elixir-format
 msgid "Customize columns"
-msgstr ""
+msgstr "Kohanda veerge"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:152
 #, elixir-autogen, elixir-format
 msgid "Defaults"
-msgstr ""
+msgstr "Vaikimisi"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:48
 #, elixir-autogen, elixir-format
 msgid "Drag selected columns to reorder, or click an available column to add it."
-msgstr ""
+msgstr "Lohista valitud veerge järjekorra muutmiseks või klõpsa saadaval oleval veerul selle lisamiseks."
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:58
 #, elixir-autogen, elixir-format
 msgid "Drag to reorder"
-msgstr ""
+msgstr "Lohista järjekorra muutmiseks"
 
 #: lib/phoenix_kit_crm/web/cell_format.ex:37
 #: lib/phoenix_kit_crm/web/cell_format.ex:39
 #: lib/phoenix_kit_crm/web/cell_format.ex:41
 #, elixir-autogen, elixir-format
 msgid "No"
-msgstr ""
+msgstr "Ei"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:93
 #, elixir-autogen, elixir-format
 msgid "No columns selected"
-msgstr ""
+msgstr "Ühtegi veergu pole valitud"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:84
 #, elixir-autogen, elixir-format
 msgid "Remove"
-msgstr ""
+msgstr "Eemalda"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:57
 #, elixir-autogen, elixir-format
 msgid "Selected"
-msgstr ""
+msgstr "Valitud"
 
 #: lib/phoenix_kit_crm/web/column_modal.ex:106
 #, elixir-autogen, elixir-format
 msgid "Standard"
-msgstr ""
+msgstr "Tavaline"
 
 #: lib/phoenix_kit_crm/web/cell_format.ex:36
 #: lib/phoenix_kit_crm/web/cell_format.ex:38
 #: lib/phoenix_kit_crm/web/cell_format.ex:40
 #, elixir-autogen, elixir-format
 msgid "Yes"
-msgstr ""
+msgstr "Jah"
