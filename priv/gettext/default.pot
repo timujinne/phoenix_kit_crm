@@ -20,10 +20,14 @@
 msgid ""
 msgstr ""
 
-## Tab labels (manually maintained — not auto-extracted by mix gettext.extract)
-#: lib/phoenix_kit_crm/web/crm_live.ex:17
-#: lib/phoenix_kit_crm/web/crm_live.ex:38
-#, elixir-autogen
+## Tab labels (manually maintained — not auto-extracted by mix gettext.extract).
+## NOTE: the elixir-autogen flag is intentionally stripped on "CRM" and
+## "Organizations" so the entries survive even if the gettext("CRM") /
+## gettext("Organizations") macro call sites in crm_live.ex /
+## organizations_view.ex are ever removed. If you re-run mix gettext.extract
+## it will re-add the flag and line refs — strip them again to keep the
+## tab-label fallback durable.
+#: lib/phoenix_kit_crm.ex
 msgid "CRM"
 msgstr ""
 
@@ -31,8 +35,7 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
-#: lib/phoenix_kit_crm/web/organizations_view.ex:79
-#, elixir-autogen
+#: lib/phoenix_kit_crm.ex
 msgid "Organizations"
 msgstr ""
 
@@ -219,11 +222,15 @@ msgstr ""
 msgid "Columns"
 msgstr ""
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Columns updated"
 msgstr ""
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Failed to save columns"
 msgstr ""
 

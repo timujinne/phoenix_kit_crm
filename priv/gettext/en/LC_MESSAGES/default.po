@@ -11,9 +11,7 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: lib/phoenix_kit_crm/web/crm_live.ex:17
-#: lib/phoenix_kit_crm/web/crm_live.ex:38
-#, elixir-autogen
+#: lib/phoenix_kit_crm.ex
 msgid "CRM"
 msgstr "CRM"
 
@@ -21,8 +19,7 @@ msgstr "CRM"
 msgid "Overview"
 msgstr "Overview"
 
-#: lib/phoenix_kit_crm/web/organizations_view.ex:79
-#, elixir-autogen
+#: lib/phoenix_kit_crm.ex
 msgid "Organizations"
 msgstr "Organizations"
 
@@ -207,11 +204,15 @@ msgstr "Choose which roles can access the CRM module. Owner and Admin always hav
 msgid "Columns"
 msgstr "Columns"
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Columns updated"
 msgstr "Columns updated"
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Failed to save columns"
 msgstr "Failed to save columns"
 

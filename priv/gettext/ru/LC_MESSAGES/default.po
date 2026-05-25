@@ -11,9 +11,7 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: lib/phoenix_kit_crm/web/crm_live.ex:17
-#: lib/phoenix_kit_crm/web/crm_live.ex:38
-#, elixir-autogen
+#: lib/phoenix_kit_crm.ex
 msgid "CRM"
 msgstr "CRM"
 
@@ -21,8 +19,7 @@ msgstr "CRM"
 msgid "Overview"
 msgstr "Обзор"
 
-#: lib/phoenix_kit_crm/web/organizations_view.ex:79
-#, elixir-autogen
+#: lib/phoenix_kit_crm.ex
 msgid "Organizations"
 msgstr "Организации"
 
@@ -210,18 +207,22 @@ msgstr "Выберите роли, которым разрешён доступ 
 msgid "Columns"
 msgstr "Столбцы"
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Columns updated"
 msgstr "Столбцы обновлены"
 
-#: lib/phoenix_kit_crm/web/column_management.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
 msgid "Failed to save columns"
 msgstr "Не удалось сохранить столбцы"
 
 #: lib/phoenix_kit_crm/web/crm_live.ex:52
 #, elixir-autogen, elixir-format
 msgid "Disabled"
-msgstr "Отключён"
+msgstr "Отключено"
 
 #: lib/phoenix_kit_crm/web/settings_live.ex:78
 #, elixir-autogen, elixir-format
@@ -231,7 +232,7 @@ msgstr "Включить CRM"
 #: lib/phoenix_kit_crm/web/crm_live.ex:52
 #, elixir-autogen, elixir-format
 msgid "Enabled"
-msgstr "Включён"
+msgstr "Включено"
 
 #: lib/phoenix_kit_crm/web/crm_live.ex:68
 #, elixir-autogen, elixir-format
