@@ -7,6 +7,10 @@ defmodule PhoenixKitCRM.Web.ColumnManagement do
     * assign `:current_user_uuid`
     * assign `:selected_columns` (initial column list)
     * call `assign_column_state/3` from `mount/3` to bootstrap modal state
+    * `use Gettext, backend: PhoenixKitCRM.Gettext` — the injected flash
+      messages call the bare `gettext/1` macro, so the backend must be in the
+      host's scope. (It is kept as a macro rather than a fully-qualified
+      `Gettext.gettext/2` call so `mix gettext.extract` can pick the strings up.)
 
   The macro handles `show_column_modal`, `hide_column_modal`, `add_column`,
   `remove_column`, `reorder_selected_columns`, `update_table_columns` (with
