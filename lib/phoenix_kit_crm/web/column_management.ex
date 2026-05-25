@@ -102,12 +102,12 @@ defmodule PhoenixKitCRM.Web.ColumnManagement do
              |> Phoenix.Component.assign(:selected_columns, valid)
              |> Phoenix.Component.assign(:show_column_modal, false)
              |> Phoenix.Component.assign(:temp_selected_columns, nil)
-             |> Phoenix.LiveView.put_flash(:info, "Columns updated")}
+             |> Phoenix.LiveView.put_flash(:info, gettext("Columns updated"))}
 
           {:error, _} ->
             {:noreply,
              socket
-             |> Phoenix.LiveView.put_flash(:error, "Failed to save columns")}
+             |> Phoenix.LiveView.put_flash(:error, gettext("Failed to save columns"))}
         end
       end
     end

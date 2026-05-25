@@ -6,6 +6,7 @@ defmodule PhoenixKitCRM.Web.RoleView do
   """
   use PhoenixKitWeb, :live_view
   use PhoenixKitCRM.Web.ColumnManagement
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   alias PhoenixKit.Users.Roles
   alias PhoenixKitCRM.{ColumnConfig, Paths, Web.CellFormat, Web.ColumnModal}

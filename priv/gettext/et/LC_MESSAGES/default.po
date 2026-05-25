@@ -142,3 +142,166 @@ msgstr "Tavaline"
 #, elixir-autogen, elixir-format
 msgid "Yes"
 msgstr "Jah"
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:82
+#, elixir-autogen, elixir-format
+msgid "%{count} organization"
+msgid_plural "%{count} organizations"
+msgstr[0] "%{count} organisatsioon"
+msgstr[1] "%{count} organisatsiooni"
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:71
+#, elixir-autogen, elixir-format
+msgid "%{count} role"
+msgid_plural "%{count} roles"
+msgstr[0] "%{count} roll"
+msgstr[1] "%{count} rolli"
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:106
+#: lib/phoenix_kit_crm/web/role_view.ex:86
+#, elixir-autogen, elixir-format
+msgid "%{count} user"
+msgid_plural "%{count} users"
+msgstr[0] "%{count} kasutaja"
+msgstr[1] "%{count} kasutajat"
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:27
+#: lib/phoenix_kit_crm/web/role_view.ex:22
+#, elixir-autogen, elixir-format
+msgid "CRM is not enabled."
+msgstr "CRM moodul ei ole sisse lülitatud."
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:59
+#: lib/phoenix_kit_crm/web/settings_live.ex:17
+#: lib/phoenix_kit_crm/web/settings_live.ex:67
+#, elixir-autogen, elixir-format
+msgid "CRM settings"
+msgstr "CRM seaded"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:36
+#, elixir-autogen, elixir-format
+msgid "CRM settings updated"
+msgstr "CRM seaded uuendatud"
+
+#: lib/phoenix_kit_crm/web/role_view.ex:45
+#, elixir-autogen, elixir-format
+msgid "CRM — %{name}"
+msgstr "CRM — %{name}"
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:41
+#, elixir-autogen, elixir-format
+msgid "CRM — Organizations"
+msgstr "CRM — Organisatsioonid"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:101
+#, elixir-autogen, elixir-format
+msgid "Choose which roles can access the CRM module. Owner and Admin always have access."
+msgstr "Vali rollid, millel on juurdepääs CRM moodulile. Omanikul ja administraatoril on alati juurdepääs."
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:97
+#: lib/phoenix_kit_crm/web/role_view.ex:99
+#, elixir-autogen, elixir-format
+msgid "Columns"
+msgstr "Veerud"
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
+msgid "Columns updated"
+msgstr "Veerud uuendatud"
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:12
+#: lib/phoenix_kit_crm/web/role_view.ex:8
+#, elixir-autogen
+msgid "Failed to save columns"
+msgstr "Veergude salvestamine ebaõnnestus"
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Disabled"
+msgstr "Välja lülitatud"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:78
+#, elixir-autogen, elixir-format
+msgid "Enable CRM"
+msgstr "Lülita CRM sisse"
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Enabled"
+msgstr "Sisse lülitatud"
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:68
+#, elixir-autogen, elixir-format
+msgid "Enabled roles"
+msgstr "Sisse lülitatud rollid"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:39
+#, elixir-autogen, elixir-format
+msgid "Failed to update CRM settings"
+msgstr "CRM seadete uuendamine ebaõnnestus"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:55
+#, elixir-autogen, elixir-format
+msgid "Failed to update role access"
+msgstr "Rolli juurdepääsu uuendamine ebaõnnestus"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:70
+#, elixir-autogen, elixir-format
+msgid "Module-specific configuration will appear here as the CRM grows."
+msgstr "Mooduli-spetsiifilised seaded ilmuvad siia CRM-i arenedes."
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:108
+#, elixir-autogen, elixir-format
+msgid "No eligible roles found."
+msgstr "Sobivaid rolle ei leitud."
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:124
+#, elixir-autogen, elixir-format
+msgid "No organization accounts yet."
+msgstr "Organisatsioonide kontosid pole veel."
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:81
+#, elixir-autogen, elixir-format
+msgid "No roles connected to CRM yet. Enable a role in CRM settings."
+msgstr "CRM-iga pole veel ühtegi rolli ühendatud. Lülita roll sisse CRM seadetes."
+
+#: lib/phoenix_kit_crm/web/role_view.ex:126
+#, elixir-autogen, elixir-format
+msgid "No users with this role."
+msgstr "Selle rolliga kasutajaid pole."
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:33
+#, elixir-autogen, elixir-format
+msgid "Organization accounts are not enabled."
+msgstr "Organisatsioonide kontod ei ole sisse lülitatud."
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:98
+#, elixir-autogen, elixir-format
+msgid "Role Access"
+msgstr "Rolli juurdepääs"
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Role access updated"
+msgstr "Rolli juurdepääs uuendatud"
+
+#: lib/phoenix_kit_crm/web/role_view.ex:36
+#, elixir-autogen, elixir-format
+msgid "Role not found."
+msgstr "Rolli ei leitud."
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:40
+#, elixir-autogen, elixir-format
+msgid "This is a placeholder. CRM functionality will live here."
+msgstr "See on kohatäide. CRM funktsionaalsus saab elama siin."
+
+#: lib/phoenix_kit_crm/web/role_view.ex:28
+#, elixir-autogen, elixir-format
+msgid "This role does not have CRM access."
+msgstr "Sellel rollil pole CRM-i juurdepääsu."
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:81
+#, elixir-autogen, elixir-format
+msgid "Toggles this module on or off. Same setting as the admin Modules page."
+msgstr "Lülitab selle mooduli sisse või välja. Sama seade nagu administraatori Moodulite lehel."

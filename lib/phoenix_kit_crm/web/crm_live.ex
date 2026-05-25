@@ -6,6 +6,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
   theme) thanks to the `live_view` field on `admin_tabs/0`.
   """
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   alias PhoenixKitCRM.{Paths, RoleSettings}
 
@@ -34,7 +35,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
     <div class="flex flex-col mx-auto max-w-3xl px-4 py-6 gap-6">
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body items-center text-center">
-          <h2 class="card-title text-3xl">CRM</h2>
+          <h2 class="card-title text-3xl">{gettext("CRM")}</h2>
           <p class="text-base-content/70 mt-1">
             {gettext("This is a placeholder. CRM functionality will live here.")}
           </p>
@@ -48,7 +49,7 @@ defmodule PhoenixKitCRM.Web.CRMLive do
                 name={if @enabled, do: "hero-check-circle-mini", else: "hero-minus-circle-mini"}
                 class="w-3 h-3"
               />
-              {if @enabled, do: "Enabled", else: "Disabled"}
+              {if @enabled, do: gettext("Enabled"), else: gettext("Disabled")}
             </div>
           </div>
 
