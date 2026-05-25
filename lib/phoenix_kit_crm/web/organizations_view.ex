@@ -10,6 +10,7 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
   """
   use PhoenixKitWeb, :live_view
   use PhoenixKitCRM.Web.ColumnManagement
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth

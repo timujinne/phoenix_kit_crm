@@ -152,7 +152,7 @@ defmodule PhoenixKitCRM do
         label: "CRM",
         icon: "hero-users",
         path: "crm",
-        priority: 650,
+        priority: 927,
         level: :admin,
         parent: :admin_settings,
         permission: module_key(),

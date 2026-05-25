@@ -17,13 +17,13 @@
 ##
 ## The remaining msgids below are auto-extracted from gettext() macro
 ## calls in lib/ and will be refreshed by `mix gettext.extract`.
-
 msgid ""
 msgstr ""
 
 ## Tab labels (manually maintained — not auto-extracted by mix gettext.extract)
-
-#: lib/phoenix_kit_crm.ex
+#: lib/phoenix_kit_crm/web/crm_live.ex:17
+#: lib/phoenix_kit_crm/web/crm_live.ex:38
+#, elixir-autogen
 msgid "CRM"
 msgstr ""
 
@@ -31,13 +31,13 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
-#: lib/phoenix_kit_crm.ex
+#: lib/phoenix_kit_crm/web/organizations_view.ex:79
+#, elixir-autogen
 msgid "Organizations"
 msgstr ""
 
 ## Column labels (manually maintained — module-attribute literals in
 ## column_config.ex, translated at runtime; not auto-extracted)
-
 #: lib/phoenix_kit_crm/column_config.ex
 msgid "Contact"
 msgstr ""
@@ -156,4 +156,163 @@ msgstr ""
 #: lib/phoenix_kit_crm/web/cell_format.ex:40
 #, elixir-autogen, elixir-format
 msgid "Yes"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:82
+#, elixir-autogen, elixir-format
+msgid "%{count} organization"
+msgid_plural "%{count} organizations"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:71
+#, elixir-autogen, elixir-format
+msgid "%{count} role"
+msgid_plural "%{count} roles"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:106
+#: lib/phoenix_kit_crm/web/role_view.ex:86
+#, elixir-autogen, elixir-format
+msgid "%{count} user"
+msgid_plural "%{count} users"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:27
+#: lib/phoenix_kit_crm/web/role_view.ex:22
+#, elixir-autogen, elixir-format
+msgid "CRM is not enabled."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:59
+#: lib/phoenix_kit_crm/web/settings_live.ex:17
+#: lib/phoenix_kit_crm/web/settings_live.ex:67
+#, elixir-autogen, elixir-format
+msgid "CRM settings"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:36
+#, elixir-autogen, elixir-format
+msgid "CRM settings updated"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/role_view.ex:45
+#, elixir-autogen, elixir-format
+msgid "CRM — %{name}"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:41
+#, elixir-autogen, elixir-format
+msgid "CRM — Organizations"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:101
+#, elixir-autogen, elixir-format
+msgid "Choose which roles can access the CRM module. Owner and Admin always have access."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:97
+#: lib/phoenix_kit_crm/web/role_view.ex:99
+#, elixir-autogen, elixir-format
+msgid "Columns"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_management.ex
+msgid "Columns updated"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/column_management.ex
+msgid "Failed to save columns"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Disabled"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:78
+#, elixir-autogen, elixir-format
+msgid "Enable CRM"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Enabled"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:68
+#, elixir-autogen, elixir-format
+msgid "Enabled roles"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:39
+#, elixir-autogen, elixir-format
+msgid "Failed to update CRM settings"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:55
+#, elixir-autogen, elixir-format
+msgid "Failed to update role access"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:70
+#, elixir-autogen, elixir-format
+msgid "Module-specific configuration will appear here as the CRM grows."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:108
+#, elixir-autogen, elixir-format
+msgid "No eligible roles found."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:124
+#, elixir-autogen, elixir-format
+msgid "No organization accounts yet."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:81
+#, elixir-autogen, elixir-format
+msgid "No roles connected to CRM yet. Enable a role in CRM settings."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/role_view.ex:126
+#, elixir-autogen, elixir-format
+msgid "No users with this role."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/organizations_view.ex:33
+#, elixir-autogen, elixir-format
+msgid "Organization accounts are not enabled."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:98
+#, elixir-autogen, elixir-format
+msgid "Role Access"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:52
+#, elixir-autogen, elixir-format
+msgid "Role access updated"
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/role_view.ex:36
+#, elixir-autogen, elixir-format
+msgid "Role not found."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/crm_live.ex:40
+#, elixir-autogen, elixir-format
+msgid "This is a placeholder. CRM functionality will live here."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/role_view.ex:28
+#, elixir-autogen, elixir-format
+msgid "This role does not have CRM access."
+msgstr ""
+
+#: lib/phoenix_kit_crm/web/settings_live.ex:81
+#, elixir-autogen, elixir-format
+msgid "Toggles this module on or off. Same setting as the admin Modules page."
 msgstr ""

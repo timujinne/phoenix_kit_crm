@@ -3,6 +3,7 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
   CRM settings page — exposes the enable/disable toggle and role opt-in.
   """
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitCRM.Gettext
 
   alias PhoenixKitCRM.RoleSettings
 
@@ -13,7 +14,7 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
 
     {:ok,
      assign(socket,
-       page_title: Gettext.gettext(PhoenixKitWeb.Gettext, "CRM settings"),
+       page_title: gettext("CRM settings"),
        enabled: PhoenixKitCRM.enabled?(),
        eligible_roles: eligible_roles,
        enabled_role_uuids: enabled_role_uuids
@@ -32,15 +33,10 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
         {:noreply,
          socket
          |> assign(:enabled, PhoenixKitCRM.enabled?())
-         |> put_flash(:info, Gettext.gettext(PhoenixKitWeb.Gettext, "CRM settings updated"))}
+         |> put_flash(:info, gettext("CRM settings updated"))}
 
       _ ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           Gettext.gettext(PhoenixKitWeb.Gettext, "Failed to update CRM settings")
-         )}
+        {:noreply, put_flash(socket, :error, gettext("Failed to update CRM settings"))}
     end
   end
 
@@ -53,15 +49,10 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
         {:noreply,
          socket
          |> assign(:enabled_role_uuids, enabled_role_uuids())
-         |> put_flash(:info, Gettext.gettext(PhoenixKitWeb.Gettext, "Role access updated"))}
+         |> put_flash(:info, gettext("Role access updated"))}
 
       _ ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           Gettext.gettext(PhoenixKitWeb.Gettext, "Failed to update role access")
-         )}
+        {:noreply, put_flash(socket, :error, gettext("Failed to update role access"))}
     end
   end
 
@@ -73,13 +64,10 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
         <div class="card-body">
           <h2 class="card-title text-2xl">
             <.icon name="hero-cog-6-tooth" class="w-6 h-6" />
-            {Gettext.gettext(PhoenixKitWeb.Gettext, "CRM settings")}
+            {gettext("CRM settings")}
           </h2>
           <p class="text-base-content/70 text-sm">
-            {Gettext.gettext(
-              PhoenixKitWeb.Gettext,
-              "Module-specific configuration will appear here as the CRM grows."
-            )}
+            {gettext("Module-specific configuration will appear here as the CRM grows.")}
           </p>
 
           <div class="divider"></div>
@@ -87,13 +75,10 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
           <div class="flex items-center justify-between">
             <div>
               <div class="font-medium">
-                {Gettext.gettext(PhoenixKitWeb.Gettext, "Enable CRM")}
+                {gettext("Enable CRM")}
               </div>
               <div class="text-xs text-base-content/60">
-                {Gettext.gettext(
-                  PhoenixKitWeb.Gettext,
-                  "Toggles this module on or off. Same setting as the admin Modules page."
-                )}
+                {gettext("Toggles this module on or off. Same setting as the admin Modules page.")}
               </div>
             </div>
             <input
@@ -110,20 +95,17 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
         <div class="card-body">
           <h2 class="card-title text-xl">
             <.icon name="hero-user-group" class="w-5 h-5" />
-            {Gettext.gettext(PhoenixKitWeb.Gettext, "Role Access")}
+            {gettext("Role Access")}
           </h2>
           <p class="text-base-content/70 text-sm">
-            {Gettext.gettext(
-              PhoenixKitWeb.Gettext,
-              "Choose which roles can access the CRM module. Owner and Admin always have access."
-            )}
+            {gettext("Choose which roles can access the CRM module. Owner and Admin always have access.")}
           </p>
 
           <div class="divider"></div>
 
           <div class="flex flex-col gap-3">
             <div :if={@eligible_roles == []} class="text-base-content/50 text-sm">
-              {Gettext.gettext(PhoenixKitWeb.Gettext, "No eligible roles found.")}
+              {gettext("No eligible roles found.")}
             </div>
             <label
               :for={role <- @eligible_roles}
