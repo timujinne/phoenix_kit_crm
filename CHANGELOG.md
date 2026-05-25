@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - 2026-05-25
+
+Incremental i18n coverage plus a dependency refresh. No API changes; the
+only user-visible behaviour change is the CRM settings tab sort position.
+
+### Added
+
+- Localized the remaining CRM admin page bodies onto the package-owned
+  `PhoenixKitCRM.Gettext` backend — `CRMLive` (`CRM`, `Enabled`, `Disabled`),
+  `SettingsLive` (page title, headings, helper text, flash messages), and the
+  `ColumnManagement` macro flash messages (`Columns updated`,
+  `Failed to save columns`). All `Gettext.gettext(PhoenixKitWeb.Gettext, …)`
+  long-form calls converted to the short `gettext()` macro. After this release
+  there are no references to the host app's `PhoenixKitWeb.Gettext` backend
+  left in `lib/`. Full `en`/`ru`/`et` coverage for the new msgids.
+- Completed the Estonian catalogue — the 16 previously empty column-customization
+  msgids (`Apply`, `Cancel`, `Customize columns`, `Drag to reorder`, `Selected`,
+  `Available`, …) are now translated; `et/default.po` is 28/28.
+
+### Changed
+
+- CRM admin sidebar tab `priority` `650 → 924`, repositioning the entry within
+  the admin settings group.
+- Dependencies refreshed — `phoenix_kit` `1.7.106 → 1.7.120`, `ecto`/`ecto_sql`
+  `3.13 → 3.14`, plus patch/minor bumps across `bandit`, `finch`, `plug`,
+  `postgrex`, `req`, `swoosh`, `tesla`, `igniter`, and others.
+- Tightened the `precommit` alias to `compile --force --warnings-as-errors`,
+  `deps.unlock --check-unused`, and `quality.ci`.
+
+### Documentation
+
+- `PhoenixKitCRM.Web.ColumnManagement` moduledoc now lists the host requirement
+  to `use Gettext, backend: PhoenixKitCRM.Gettext` (the injected flash messages
+  call the bare `gettext/1` macro, kept as a macro so `mix gettext.extract`
+  sees the strings).
+
 ## [0.2.2] - 2026-05-09
 
 ### Added
