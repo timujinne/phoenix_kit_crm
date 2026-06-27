@@ -63,9 +63,11 @@ defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
           {gettext("Logged on this company's contacts. Click a name to open their page.")}
         </p>
 
-        <p :if={@interactions == []} class="text-sm text-base-content/60 py-2">
-          {gettext("No interactions logged for this company's contacts yet.")}
-        </p>
+        <.empty_state
+          :if={@interactions == []}
+          icon="hero-chat-bubble-left-right"
+          title={gettext("No interactions logged for this company's contacts yet.")}
+        />
 
         <ol :if={@interactions != []} class="flex flex-col gap-3 mt-1">
           <li :for={i <- @interactions} class="rounded-box border border-base-200 p-3 flex flex-col gap-1">

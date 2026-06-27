@@ -140,9 +140,11 @@ defmodule PhoenixKitCRM.Web.EventsComponent do
           </.link>
         </div>
 
-        <p :if={@events == []} class="text-sm text-base-content/60 py-2">
-          {gettext("No activity recorded yet.")}
-        </p>
+        <.empty_state
+          :if={@events == []}
+          icon="hero-clock"
+          title={gettext("No activity recorded yet.")}
+        />
 
         <ul :if={@events != []} class="flex flex-col divide-y divide-base-200">
           <li :for={e <- @events} class="flex items-start gap-3 py-2.5">

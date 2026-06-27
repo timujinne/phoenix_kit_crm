@@ -20,6 +20,7 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
   use Gettext, backend: PhoenixKitCRM.Gettext
 
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
+  import PhoenixKitWeb.Components.Core.Modal, only: [modal: 1]
 
   alias PhoenixKitCRM.ColumnConfig
   alias PhoenixKitWeb.Components.Core.DraggableList
@@ -41,12 +42,17 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
       |> assign(:current, current)
 
     ~H"""
-    <div :if={@show} class="modal modal-open" id="crm-column-modal">
-        <div class="modal-box max-w-5xl max-h-[90vh] overflow-hidden">
-          <h3 class="font-bold text-xl mb-4">{gettext("Customize columns")}</h3>
-          <p class="text-base-content/70 mb-6">
-            {gettext("Drag selected columns to reorder, or click an available column to add it.")}
-          </p>
+    <.modal
+      show={@show}
+      on_close="hide_column_modal"
+      id="crm-column-modal"
+      max_width="4xl"
+      max_height="90vh"
+    >
+      <:title>{gettext("Customize columns")}</:title>
+      <p class="text-base-content/70 mb-6">
+        {gettext("Drag selected columns to reorder, or click an available column to add it.")}
+      </p>
 
           <form phx-submit="update_table_columns" id="crm-column-form">
             <input type="hidden" name="column_order" value={Enum.join(@current, ",")} />
@@ -146,7 +152,7 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
               </div>
             </div>
 
-            <div class="modal-action">
+            <div class="flex justify-end gap-2 mt-2">
               <button type="submit" class="btn btn-primary">{gettext("Apply")}</button>
               <button type="button" class="btn btn-outline" phx-click="reset_to_defaults">
                 {gettext("Defaults")}
@@ -156,9 +162,7 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
               </button>
             </div>
           </form>
-        </div>
-        <div class="modal-backdrop" phx-click="hide_column_modal"></div>
-      </div>
+    </.modal>
     """
   end
 

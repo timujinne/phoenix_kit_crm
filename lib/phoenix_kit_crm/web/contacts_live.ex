@@ -95,9 +95,12 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         </.link>
       </div>
 
-      <div :if={@contacts == []} class="text-center text-base-content/50 py-12">
-        {gettext("No contacts yet.")}
-      </div>
+      <.empty_state
+        :if={@contacts == []}
+        icon="hero-user"
+        title={gettext("No contacts yet.")}
+        variant="card"
+      />
 
       <.table_default :if={@contacts != []} id="crm-contacts-list" size="sm">
         <.table_default_header>

@@ -299,22 +299,13 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
               {gettext("Login")}
             </div>
 
-            <label class="flex items-start gap-3 cursor-pointer">
-              <input type="hidden" name="allow_login" value="false" />
-              <input
-                type="checkbox"
-                name="allow_login"
-                value="true"
-                class="checkbox checkbox-primary mt-0.5"
-                checked={@allow_login}
-              />
-              <span>
-                <span class="font-medium">{gettext("Allow this person to log in")}</span>
-                <span class="block text-xs text-base-content/60">
-                  {gettext("Connects the contact to a PhoenixKit user (creates one if none exists for the email). Requires an email. They set a password via the normal sign-in flow.")}
-                </span>
-              </span>
-            </label>
+            <.checkbox
+              name="allow_login"
+              checked={@allow_login}
+              label={gettext("Allow this person to log in")}
+            >
+              {gettext("Connects the contact to a PhoenixKit user (creates one if none exists for the email). Requires an email. They set a password via the normal sign-in flow.")}
+            </.checkbox>
 
             <div class="divider my-0"></div>
             <div class="flex justify-end gap-2">

@@ -98,9 +98,12 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         </.link>
       </div>
 
-      <div :if={@companies == []} class="text-center text-base-content/50 py-12">
-        {gettext("No companies yet.")}
-      </div>
+      <.empty_state
+        :if={@companies == []}
+        icon="hero-building-office-2"
+        title={gettext("No companies yet.")}
+        variant="card"
+      />
 
       <.table_default :if={@companies != []} id="crm-companies-list" size="sm">
         <.table_default_header>

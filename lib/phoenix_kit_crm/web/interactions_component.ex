@@ -710,9 +710,11 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
       </div>
 
       <%!-- Timeline --%>
-      <div :if={@interactions == []} class="text-center text-base-content/50 py-8">
-        {gettext("No interactions logged yet.")}
-      </div>
+      <.empty_state
+        :if={@interactions == []}
+        icon="hero-chat-bubble-left-right"
+        title={gettext("No interactions logged yet.")}
+      />
 
       <ol :if={@interactions != []} class="flex flex-col gap-3">
         <li :for={i <- @interactions} class="card bg-base-100 shadow-sm border border-base-200">

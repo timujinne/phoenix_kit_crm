@@ -232,9 +232,11 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
             <.icon name="hero-users" class="w-5 h-5" /> {gettext("Members")} ({length(@memberships)})
           </h2>
 
-          <p :if={@memberships == []} class="text-sm text-base-content/60 py-2">
-            {gettext("No contacts linked to this company yet — set a contact's company on their edit page.")}
-          </p>
+          <.empty_state
+            :if={@memberships == []}
+            icon="hero-users"
+            title={gettext("No contacts linked to this company yet — set a contact's company on their edit page.")}
+          />
 
           <ul :if={@memberships != []} class="flex flex-col divide-y divide-base-200">
             <li :for={m <- @memberships} class="flex items-center gap-3 py-2.5">
