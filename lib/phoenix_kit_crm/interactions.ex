@@ -12,6 +12,7 @@ defmodule PhoenixKitCRM.Interactions do
 
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Contacts
+  alias PhoenixKitCRM.PubSub
   alias PhoenixKitCRM.Schemas.{Contact, Interaction, InteractionParty}
   alias PhoenixKitCRM.StaffLink
 
@@ -75,6 +76,7 @@ defmodule PhoenixKitCRM.Interactions do
           repo().rollback(changeset)
       end
     end)
+    |> broadcast_after(:interaction_created)
   end
 
   @spec update_interaction(Interaction.t(), map(), [map()]) ::
@@ -90,11 +92,31 @@ defmodule PhoenixKitCRM.Interactions do
           repo().rollback(changeset)
       end
     end)
+    |> broadcast_after(:interaction_updated)
   end
 
   @spec delete_interaction(Interaction.t()) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
-  def delete_interaction(%Interaction{} = interaction), do: repo().delete(interaction)
+  def delete_interaction(%Interaction{} = interaction) do
+    # Broadcast with the passed-in struct (parties preloaded by the caller) so
+    # every involved contact's feed is reached even though the row is now gone.
+    case repo().delete(interaction) do
+      {:ok, _deleted} = ok ->
+        PubSub.broadcast_interaction(:interaction_deleted, interaction)
+        ok
+
+      error ->
+        error
+    end
+  end
+
+  # Fan a successful create/update out to involved contacts' feeds (after commit).
+  defp broadcast_after({:ok, %Interaction{} = interaction} = ok, event) do
+    PubSub.broadcast_interaction(event, interaction)
+    ok
+  end
+
+  defp broadcast_after(other, _event), do: other
 
   # ── Party reconciliation + snapshot ─────────────────────────────────
 

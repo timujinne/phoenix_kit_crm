@@ -5,6 +5,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
 
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.{Contacts, Paths}
+  alias PhoenixKitCRM.PubSub, as: CRMPubSub
   alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitCRM.Web.InteractionsComponent
 
@@ -27,6 +28,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
 
         {:noreply,
          socket
+         |> maybe_subscribe(contact.uuid)
          |> assign(:contact, contact)
          |> assign(:tab, tab)
          |> assign(:membership, Contacts.primary_membership(contact))
@@ -34,6 +36,35 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
          |> assign(:page_title, Contact.display_name(contact))}
     end
   end
+
+  # Subscribe once (per contact) to this contact's interaction feed so any
+  # add/edit/delete by anyone — including from another open tab — pushes a live
+  # refresh. Tab switches re-run handle_params but keep the same contact, so the
+  # guard avoids a duplicate subscription; navigating to a different contact is a
+  # fresh LiveView, which cleans up the old subscription on its own.
+  defp maybe_subscribe(socket, contact_uuid) do
+    if connected?(socket) and socket.assigns[:subscribed_uuid] != contact_uuid do
+      CRMPubSub.subscribe(CRMPubSub.topic_contact_interactions(contact_uuid))
+      assign(socket, :subscribed_uuid, contact_uuid)
+    else
+      socket
+    end
+  end
+
+  @impl true
+  # A CRM interaction touching this contact changed somewhere — refresh the
+  # feed if the Interactions tab is open (the component reloads in update/2).
+  # When it's not open, the component remounts fresh on the next switch, so
+  # there's nothing to do.
+  def handle_info({:crm, _event, _payload}, socket) do
+    if socket.assigns[:tab] == "interactions" and socket.assigns[:contact] do
+      send_update(InteractionsComponent, id: "crm-interactions-#{socket.assigns.contact.uuid}")
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
