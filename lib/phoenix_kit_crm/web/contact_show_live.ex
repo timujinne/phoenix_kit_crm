@@ -143,26 +143,37 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   # existing images and uploads land in the Images tab).
   @impl true
   def handle_event("edit_avatar", _params, socket) do
-    if socket.assigns.storage_enabled do
-      actor = current_user_uuid(socket.assigns)
+    cond do
+      not socket.assigns.storage_enabled ->
+        {:noreply, socket}
 
-      case Attachments.ensure_folder(:contact, socket.assigns.contact.uuid, :images, actor) do
-        {:ok, folder_uuid} ->
-          {:noreply, assign(socket, avatar_folder_uuid: folder_uuid, show_avatar_picker: true)}
+      Contact.trashed?(socket.assigns.contact) ->
+        {:noreply,
+         put_flash(socket, :error, gettext("Restore this contact before changing its photo."))}
 
-        _ ->
-          {:noreply, put_flash(socket, :error, gettext("Could not open the image picker."))}
-      end
-    else
-      {:noreply, socket}
+      true ->
+        actor = current_user_uuid(socket.assigns)
+
+        case Attachments.ensure_folder(:contact, socket.assigns.contact.uuid, :images, actor) do
+          {:ok, folder_uuid} ->
+            {:noreply, assign(socket, avatar_folder_uuid: folder_uuid, show_avatar_picker: true)}
+
+          _ ->
+            {:noreply, put_flash(socket, :error, gettext("Could not open the image picker."))}
+        end
     end
   end
 
   def handle_event("remove_avatar", _params, socket) do
-    Attachments.clear_avatar(socket.assigns.contact)
-    log_avatar(socket, "removed")
-    send(self(), {:avatar_changed})
-    {:noreply, socket}
+    case Attachments.clear_avatar(socket.assigns.contact) do
+      {:ok, _} ->
+        log_avatar(socket, "removed")
+        send(self(), {:avatar_changed})
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Could not remove the photo."))}
+    end
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
