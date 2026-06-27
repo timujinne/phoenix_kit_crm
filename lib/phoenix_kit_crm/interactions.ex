@@ -115,7 +115,7 @@ defmodule PhoenixKitCRM.Interactions do
         # subscriber reloading off the broadcast already sees both the attached
         # files (rendered from the folder) and the Events-tab activity row.
         attach_files(interaction, file_uuids, attrs["owner_user_uuid"])
-        log_interaction_logged(interaction)
+        log_interaction("crm.interaction_logged", interaction)
         PubSub.broadcast_interaction(:interaction_created, interaction)
         ok
 
@@ -134,9 +134,9 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
-  @spec update_interaction(Interaction.t(), map(), [map()]) ::
+  @spec update_interaction(Interaction.t(), map(), [map()], keyword()) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
-  def update_interaction(%Interaction{} = interaction, attrs, party_inputs \\ []) do
+  def update_interaction(%Interaction{} = interaction, attrs, party_inputs \\ [], opts \\ []) do
     # Capture the OLD involved contacts before we replace parties / change the
     # subject, so anyone dropped by this edit still gets a refresh to remove it.
     old_uuids = PubSub.involved_contact_uuids(repo().preload(interaction, :parties))
@@ -155,6 +155,8 @@ defmodule PhoenixKitCRM.Interactions do
 
     case result do
       {:ok, updated} = ok ->
+        log_interaction("crm.interaction_updated", updated, opts)
+
         PubSub.broadcast_to_contacts(
           :interaction_updated,
           updated.uuid,
@@ -168,9 +170,9 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
-  @spec delete_interaction(Interaction.t()) ::
+  @spec delete_interaction(Interaction.t(), keyword()) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
-  def delete_interaction(%Interaction{} = interaction) do
+  def delete_interaction(%Interaction{} = interaction, opts \\ []) do
     # Force parties loaded (works for any caller, not just the component path) so
     # every involved contact's feed is reached even though the row is now gone.
     interaction = repo().preload(interaction, :parties)
@@ -179,6 +181,7 @@ defmodule PhoenixKitCRM.Interactions do
       {:ok, _deleted} = ok ->
         # Cascade the interaction's attachment folder (best-effort).
         Attachments.purge_interaction_media(interaction.uuid)
+        log_interaction("crm.interaction_deleted", interaction, opts)
         PubSub.broadcast_interaction(:interaction_deleted, interaction)
         ok
 
@@ -187,12 +190,15 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
-  # The contact's Events feed audit entry for a logged interaction. Logged in the
-  # context (not the LiveView) so it's written before the realtime broadcast and
-  # so every create path records it. Best-effort via the Activity wrapper.
-  defp log_interaction_logged(%Interaction{} = interaction) do
-    Activity.log("crm.interaction_logged",
-      actor_uuid: interaction.owner_user_uuid,
+  # The contact's Events feed audit entry for an interaction lifecycle event.
+  # Logged in the context (not the LiveView) so it's written before the realtime
+  # broadcast and so every path records it. The actor defaults to the interaction
+  # owner; callers thread the acting user via `opts[:actor_uuid]`. Best-effort via
+  # the Activity wrapper. Only the type + short subject are recorded (never the
+  # free-text body).
+  defp log_interaction(action, %Interaction{} = interaction, opts \\ []) do
+    Activity.log(action,
+      actor_uuid: Keyword.get(opts, :actor_uuid) || interaction.owner_user_uuid,
       resource_type: "crm_contact",
       resource_uuid: interaction.contact_uuid,
       target_uuid: interaction.uuid,

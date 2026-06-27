@@ -35,6 +35,18 @@ defmodule PhoenixKitCRM.ActivityLabels do
   def describe("crm.interaction_logged", _),
     do: {"hero-chat-bubble-left-ellipsis", gettext("Interaction logged")}
 
+  def describe("crm.interaction_updated", _),
+    do: {"hero-pencil-square", gettext("Interaction updated")}
+
+  def describe("crm.interaction_deleted", _),
+    do: {"hero-trash", gettext("Interaction deleted")}
+
+  def describe("crm.contact_login_connected", _),
+    do: {"hero-key", gettext("Login connected")}
+
+  def describe("crm.contact_login_disconnected", _),
+    do: {"hero-key", gettext("Login disconnected")}
+
   def describe("crm.contact_file_added", _), do: {"hero-document-plus", gettext("File added")}
 
   def describe("crm.contact_file_removed", _),
@@ -67,10 +79,22 @@ defmodule PhoenixKitCRM.ActivityLabels do
 
   @doc "Optional secondary line for an entry (e.g. an interaction's subject)."
   @spec detail(String.t(), map()) :: String.t() | nil
-  def detail("crm.interaction_logged", %{"subject" => s}) when is_binary(s) and s != "", do: s
+  def detail(action, %{"subject" => s})
+      when action in [
+             "crm.interaction_logged",
+             "crm.interaction_updated",
+             "crm.interaction_deleted"
+           ] and
+             is_binary(s) and s != "",
+      do: s
 
-  def detail("crm.interaction_logged", %{"interaction_type" => t})
-      when is_binary(t) and t != "",
+  def detail(action, %{"interaction_type" => t})
+      when action in [
+             "crm.interaction_logged",
+             "crm.interaction_updated",
+             "crm.interaction_deleted"
+           ] and
+             is_binary(t) and t != "",
       do: type_label(t)
 
   def detail("crm.contact_file_added", %{"count" => n}) when is_integer(n) and n > 0,

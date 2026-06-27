@@ -197,7 +197,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
 
     with true <- in_feed?,
          %Interaction{} = i <- Interactions.get_interaction(uuid) do
-      Interactions.delete_interaction(i)
+      Interactions.delete_interaction(i, actor_uuid: socket.assigns[:current_user_uuid])
       {:noreply, load_interactions(socket)}
     else
       _ -> {:noreply, socket}

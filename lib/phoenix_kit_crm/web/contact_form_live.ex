@@ -124,7 +124,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
         # The contact is saved; the membership + login link are best-effort
         # (each logs + swallows its own failure, returning :ok | :error).
         membership = apply_membership(contact, company_uuid, role, dept)
-        login = apply_login(contact, allow_login, email)
+        login = apply_login(contact, allow_login, email, actor_uuid(socket))
 
         Activity.log(
           "crm.contact_#{verb(action)}",
@@ -215,9 +215,14 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
       :error
   end
 
-  defp apply_login(contact, true, email) do
+  defp apply_login(contact, true, email, actor_uuid) do
+    was_connected? = not is_nil(contact.user_uuid)
+
     case Contacts.connect_user(contact, email) do
       {:ok, _linked, _status} ->
+        # Log only a genuine state change, not every re-save of an already-linked
+        # contact.
+        unless was_connected?, do: log_login("crm.contact_login_connected", contact, actor_uuid)
         :ok
 
       other ->
@@ -230,11 +235,12 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
       :error
   end
 
-  defp apply_login(%{user_uuid: nil}, false, _email), do: :ok
+  defp apply_login(%{user_uuid: nil}, false, _email, _actor_uuid), do: :ok
 
-  defp apply_login(contact, false, _email) do
+  defp apply_login(contact, false, _email, actor_uuid) do
     case Contacts.disconnect_user(contact) do
       {:ok, _unlinked} ->
+        log_login("crm.contact_login_disconnected", contact, actor_uuid)
         :ok
 
       other ->
@@ -250,8 +256,18 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
       :error
   end
 
+  defp log_login(action, contact, actor_uuid) do
+    Activity.log(action,
+      actor_uuid: actor_uuid,
+      resource_type: "crm_contact",
+      resource_uuid: contact.uuid
+    )
+  end
+
   defp verb(:new), do: "created"
   defp verb(:edit), do: "updated"
+
+  defp actor_uuid(socket), do: Keyword.get(Activity.actor_opts(socket), :actor_uuid)
 
   @impl true
   def render(assigns) do
