@@ -62,6 +62,11 @@ repo_available =
       $$ LANGUAGE plpgsql VOLATILE;
       """)
 
+      # Apply core's versioned migrations (including the CRM tables) so the
+      # integration suite has a schema. Without this the test DB is empty and
+      # every integration test fails on its first INSERT.
+      PhoenixKit.Migration.ensure_current(TestRepo, log: false)
+
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
       true
     rescue
