@@ -145,6 +145,7 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   defp tab_defs(storage_enabled?, comments_enabled?) do
     [
       {"overview", gettext("Overview"), "hero-identification"},
+      {"members", gettext("Members"), "hero-users"},
       {"interactions", gettext("Interactions"), "hero-chat-bubble-left-right"},
       {"events", gettext("Events"), "hero-clock"}
     ]
@@ -214,31 +215,53 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
         </.link>
       </div>
 
-      <div :if={@tab == "overview"} class="flex flex-col gap-6">
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-            <.field label={gettext("Website")} value={@company.website} />
-            <.field label={gettext("Email")} value={@company.email} />
-            <.field label={gettext("Phone")} value={@company.phone} />
-            <.field label={gettext("Industry")} value={@company.industry} />
-            <div class="sm:col-span-2"><.field label={gettext("Address")} value={@company.address} /></div>
-            <div class="sm:col-span-2"><.field label={gettext("Notes")} value={@company.notes} /></div>
-          </div>
+      <div :if={@tab == "overview"} class="card bg-base-100 shadow-sm">
+        <div class="card-body grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+          <.field label={gettext("Website")} value={@company.website} />
+          <.field label={gettext("Email")} value={@company.email} />
+          <.field label={gettext("Phone")} value={@company.phone} />
+          <.field label={gettext("Industry")} value={@company.industry} />
+          <div class="sm:col-span-2"><.field label={gettext("Address")} value={@company.address} /></div>
+          <div class="sm:col-span-2"><.field label={gettext("Notes")} value={@company.notes} /></div>
         </div>
+      </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-2">{gettext("Contacts at this company")}</h2>
-          <div :if={@memberships == []} class="text-base-content/50 text-sm">
-            {gettext("No contacts linked yet.")}
-          </div>
-          <ul :if={@memberships != []} class="menu bg-base-100 rounded-box shadow-sm w-full">
-            <li :for={m <- @memberships}>
-              <.link navigate={Paths.contact(m.contact_uuid)} class="flex items-center justify-between">
-                <span class="font-medium">{contact_name(m.contact)}</span>
-                <span class="text-xs text-base-content/60">
-                  {[m.role_in_company, m.department] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" · ")}
-                </span>
-              </.link>
+      <div :if={@tab == "members"} class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title text-lg">
+            <.icon name="hero-users" class="w-5 h-5" /> {gettext("Members")} ({length(@memberships)})
+          </h2>
+
+          <p :if={@memberships == []} class="text-sm text-base-content/60 py-2">
+            {gettext("No contacts linked to this company yet — set a contact's company on their edit page.")}
+          </p>
+
+          <ul :if={@memberships != []} class="flex flex-col divide-y divide-base-200">
+            <li :for={m <- @memberships} class="flex items-center gap-3 py-2.5">
+              <.member_avatar contact={m.contact} />
+              <div class="flex-1 min-w-0">
+                <.link
+                  :if={m.contact}
+                  navigate={Paths.contact(m.contact.uuid)}
+                  class="font-medium link link-hover"
+                >
+                  {Contact.display_name(m.contact)}
+                </.link>
+                <span :if={!m.contact} class="font-medium">{gettext("Unknown")}</span>
+                <div :if={member_role(m) != ""} class="text-xs text-base-content/60">{member_role(m)}</div>
+              </div>
+              <span
+                :if={m.contact && m.contact.email}
+                class="text-xs text-base-content/50 hidden sm:block truncate max-w-[14rem]"
+              >
+                {m.contact.email}
+              </span>
+              <span
+                :if={m.contact && m.contact.user_uuid}
+                class="badge badge-success badge-sm gap-1 shrink-0"
+              >
+                <.icon name="hero-key-mini" class="w-3 h-3" /> {gettext("Login")}
+              </span>
             </li>
           </ul>
         </div>
@@ -368,8 +391,41 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
     """
   end
 
-  defp contact_name(%Contact{} = c), do: Contact.display_name(c)
-  defp contact_name(_), do: gettext("Unknown")
+  # Small circular member avatar (real photo if set, else initials).
+  attr(:contact, :map, default: nil)
+
+  defp member_avatar(assigns) do
+    assigns = assign(assigns, :url, assigns.contact && Attachments.avatar_url(assigns.contact))
+
+    ~H"""
+    <img
+      :if={@url}
+      src={@url}
+      alt=""
+      class="w-9 h-9 rounded-full object-cover ring-1 ring-base-300 shrink-0"
+    />
+    <div
+      :if={!@url}
+      class="w-9 h-9 rounded-full bg-base-300 text-base-content/60 flex items-center justify-center text-sm font-semibold shrink-0"
+    >
+      {member_initials(@contact)}
+    </div>
+    """
+  end
+
+  defp member_initials(%Contact{} = c) do
+    c
+    |> Contact.display_name()
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.take(2)
+    |> Enum.map_join("", &String.first/1)
+    |> String.upcase()
+  end
+
+  defp member_initials(_), do: "?"
+
+  defp member_role(m),
+    do: [m.role_in_company, m.department] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" · ")
 
   defp tz_offset(%{} = user) do
     case PhoenixKit.Utils.Date.get_user_timezone(user) do
