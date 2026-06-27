@@ -8,7 +8,13 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: gettext("CRM — Contacts"), filter: "active", contacts: [])}
+    {:ok,
+     assign(socket,
+       page_title: gettext("CRM — Contacts"),
+       filter: "active",
+       contacts: [],
+       trashed_count: 0
+     )}
   end
 
   @impl true
@@ -19,7 +25,10 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
 
   defp load(socket) do
     opts = if socket.assigns.filter == "trashed", do: [status: "trashed"], else: []
-    assign(socket, :contacts, Contacts.list_contacts(opts))
+
+    socket
+    |> assign(:contacts, Contacts.list_contacts(opts))
+    |> assign(:trashed_count, Contacts.count_contacts(status: "trashed"))
   end
 
   @impl true
@@ -73,12 +82,16 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         </.link>
       </div>
 
-      <div role="tablist" class="tabs tabs-bordered">
+      <div
+        :if={@trashed_count > 0 or @filter == "trashed"}
+        role="tablist"
+        class="tabs tabs-bordered"
+      >
         <.link patch={Paths.contacts()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
           {gettext("Active")}
         </.link>
         <.link patch={Paths.contacts() <> "?filter=trashed"} role="tab" class={["tab", @filter == "trashed" && "tab-active"]}>
-          {gettext("Trashed")}
+          {trashed_tab_label(@trashed_count)}
         </.link>
       </div>
 
@@ -86,57 +99,80 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         {gettext("No contacts yet.")}
       </div>
 
-      <div :if={@contacts != []} class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>{gettext("Name")}</th>
-              <th>{gettext("Company")}</th>
-              <th>{gettext("Email")}</th>
-              <th>{gettext("Login")}</th>
-              <th>{gettext("Status")}</th>
-              <th class="w-px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={c <- @contacts} class="hover">
-              <td>
-                <.link navigate={Paths.contact(c.uuid)} class="link link-hover font-medium">
-                  {Contact.display_name(c)}
-                </.link>
-              </td>
-              <td class="text-base-content/70"><.company_cell contact={c} /></td>
-              <td class="text-base-content/70">{c.email || "—"}</td>
-              <td>
-                <span :if={c.user_uuid} class="badge badge-success badge-sm gap-1">
-                  <.icon name="hero-key-mini" class="w-3 h-3" /> {gettext("Yes")}
-                </span>
-                <span :if={is_nil(c.user_uuid)} class="text-base-content/40 text-xs">—</span>
-              </td>
-              <td><.status_badge status={c.status} size={:sm} /></td>
-              <td class="whitespace-nowrap text-right">
+      <.table_default :if={@contacts != []} id="crm-contacts-list" size="sm">
+        <.table_default_header>
+          <.table_default_row>
+            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Company")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Login")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+            <.table_default_header_cell class="text-right whitespace-nowrap">
+              {gettext("Actions")}
+            </.table_default_header_cell>
+          </.table_default_row>
+        </.table_default_header>
+        <tbody>
+          <.table_default_row :for={c <- @contacts}>
+            <.table_default_cell class="font-medium">
+              <.link navigate={Paths.contact(c.uuid)} class="link link-hover">
+                {Contact.display_name(c)}
+              </.link>
+            </.table_default_cell>
+            <.table_default_cell class="text-base-content/70">
+              <.company_cell contact={c} />
+            </.table_default_cell>
+            <.table_default_cell class="text-base-content/70">{c.email || "—"}</.table_default_cell>
+            <.table_default_cell>
+              <span :if={c.user_uuid} class="badge badge-success badge-sm gap-1">
+                <.icon name="hero-key-mini" class="w-3 h-3" /> {gettext("Yes")}
+              </span>
+              <span :if={is_nil(c.user_uuid)} class="text-base-content/40 text-xs">—</span>
+            </.table_default_cell>
+            <.table_default_cell><.status_badge status={c.status} size={:sm} /></.table_default_cell>
+            <.table_default_cell class="text-right whitespace-nowrap">
+              <.table_row_menu id={"crm-contact-menu-#{c.uuid}"}>
                 <%= if @filter == "trashed" do %>
-                  <button class="btn btn-ghost btn-xs" phx-click="restore" phx-value-uuid={c.uuid}>
-                    {gettext("Restore")}
-                  </button>
-                  <button class="btn btn-ghost btn-xs text-error" phx-click="delete" phx-value-uuid={c.uuid}
-                    data-confirm={gettext("Permanently delete this contact? This cannot be undone.")}>
-                    {gettext("Delete")}
-                  </button>
+                  <.table_row_menu_button
+                    phx-click="restore"
+                    phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Restoring…")}
+                    icon="hero-arrow-uturn-left"
+                    label={gettext("Restore")}
+                    variant="success"
+                  />
+                  <.table_row_menu_divider />
+                  <.table_row_menu_button
+                    phx-click="delete"
+                    phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Deleting…")}
+                    data-confirm={gettext("Permanently delete this contact? This cannot be undone.")}
+                    icon="hero-x-circle"
+                    label={gettext("Delete permanently")}
+                    variant="error"
+                  />
                 <% else %>
-                  <.link navigate={Paths.contact_edit(c.uuid)} class="btn btn-ghost btn-xs">
-                    {gettext("Edit")}
-                  </.link>
-                  <button class="btn btn-ghost btn-xs text-error" phx-click="trash" phx-value-uuid={c.uuid}
-                    data-confirm={gettext("Move this contact to trash?")}>
-                    {gettext("Trash")}
-                  </button>
+                  <.table_row_menu_link
+                    navigate={Paths.contact_edit(c.uuid)}
+                    icon="hero-pencil"
+                    label={gettext("Edit")}
+                  />
+                  <.table_row_menu_divider />
+                  <.table_row_menu_button
+                    phx-click="trash"
+                    phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Moving…")}
+                    data-confirm={gettext("Move this contact to trash?")}
+                    icon="hero-trash"
+                    label={gettext("Trash")}
+                    variant="error"
+                  />
                 <% end %>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </.table_row_menu>
+            </.table_default_cell>
+          </.table_default_row>
+        </tbody>
+      </.table_default>
     </div>
     """
   end
@@ -157,4 +193,7 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
 
   defp company_name(%{company: %{name: name}}) when is_binary(name), do: name
   defp company_name(_), do: nil
+
+  defp trashed_tab_label(0), do: gettext("Trashed")
+  defp trashed_tab_label(n), do: gettext("Trashed (%{count})", count: n)
 end

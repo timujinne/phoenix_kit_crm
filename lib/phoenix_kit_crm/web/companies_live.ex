@@ -8,7 +8,13 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: gettext("CRM — Companies"), filter: "active", companies: [])}
+    {:ok,
+     assign(socket,
+       page_title: gettext("CRM — Companies"),
+       filter: "active",
+       companies: [],
+       trashed_count: 0
+     )}
   end
 
   @impl true
@@ -19,7 +25,10 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
 
   defp load(socket) do
     opts = if socket.assigns.filter == "trashed", do: [status: "trashed"], else: []
-    assign(socket, :companies, Companies.list_companies(opts))
+
+    socket
+    |> assign(:companies, Companies.list_companies(opts))
+    |> assign(:trashed_count, Companies.count_companies(status: "trashed"))
   end
 
   @impl true
@@ -76,12 +85,16 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         </.link>
       </div>
 
-      <div role="tablist" class="tabs tabs-bordered">
+      <div
+        :if={@trashed_count > 0 or @filter == "trashed"}
+        role="tablist"
+        class="tabs tabs-bordered"
+      >
         <.link patch={Paths.companies()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
           {gettext("Active")}
         </.link>
         <.link patch={Paths.companies() <> "?filter=trashed"} role="tab" class={["tab", @filter == "trashed" && "tab-active"]}>
-          {gettext("Trashed")}
+          {trashed_tab_label(@trashed_count)}
         </.link>
       </div>
 
@@ -89,57 +102,73 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         {gettext("No companies yet.")}
       </div>
 
-      <div :if={@companies != []} class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>{gettext("Name")}</th>
-              <th>{gettext("Industry")}</th>
-              <th>{gettext("Status")}</th>
-              <th class="w-px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={c <- @companies} class="hover">
-              <td>
-                <.link navigate={Paths.company(c.uuid)} class="link link-hover font-medium">
-                  {Company.display_name(c)}
-                </.link>
-              </td>
-              <td class="text-base-content/70">{c.industry || "—"}</td>
-              <td><.status_badge status={c.status} size={:sm} /></td>
-              <td class="whitespace-nowrap text-right">
+      <.table_default :if={@companies != []} id="crm-companies-list" size="sm">
+        <.table_default_header>
+          <.table_default_row>
+            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Industry")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+            <.table_default_header_cell class="text-right whitespace-nowrap">
+              {gettext("Actions")}
+            </.table_default_header_cell>
+          </.table_default_row>
+        </.table_default_header>
+        <tbody>
+          <.table_default_row :for={c <- @companies}>
+            <.table_default_cell class="font-medium">
+              <.link navigate={Paths.company(c.uuid)} class="link link-hover">
+                {Company.display_name(c)}
+              </.link>
+            </.table_default_cell>
+            <.table_default_cell class="text-base-content/70">{c.industry || "—"}</.table_default_cell>
+            <.table_default_cell><.status_badge status={c.status} size={:sm} /></.table_default_cell>
+            <.table_default_cell class="text-right whitespace-nowrap">
+              <.table_row_menu id={"crm-company-menu-#{c.uuid}"}>
                 <%= if @filter == "trashed" do %>
-                  <button class="btn btn-ghost btn-xs" phx-click="restore" phx-value-uuid={c.uuid}>
-                    {gettext("Restore")}
-                  </button>
-                  <button
-                    class="btn btn-ghost btn-xs text-error"
+                  <.table_row_menu_button
+                    phx-click="restore"
+                    phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Restoring…")}
+                    icon="hero-arrow-uturn-left"
+                    label={gettext("Restore")}
+                    variant="success"
+                  />
+                  <.table_row_menu_divider />
+                  <.table_row_menu_button
                     phx-click="delete"
                     phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Deleting…")}
                     data-confirm={gettext("Permanently delete this company? This cannot be undone.")}
-                  >
-                    {gettext("Delete")}
-                  </button>
+                    icon="hero-x-circle"
+                    label={gettext("Delete permanently")}
+                    variant="error"
+                  />
                 <% else %>
-                  <.link navigate={Paths.company_edit(c.uuid)} class="btn btn-ghost btn-xs">
-                    {gettext("Edit")}
-                  </.link>
-                  <button
-                    class="btn btn-ghost btn-xs text-error"
+                  <.table_row_menu_link
+                    navigate={Paths.company_edit(c.uuid)}
+                    icon="hero-pencil"
+                    label={gettext("Edit")}
+                  />
+                  <.table_row_menu_divider />
+                  <.table_row_menu_button
                     phx-click="trash"
                     phx-value-uuid={c.uuid}
+                    phx-disable-with={gettext("Moving…")}
                     data-confirm={gettext("Move this company to trash?")}
-                  >
-                    {gettext("Trash")}
-                  </button>
+                    icon="hero-trash"
+                    label={gettext("Trash")}
+                    variant="error"
+                  />
                 <% end %>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </.table_row_menu>
+            </.table_default_cell>
+          </.table_default_row>
+        </tbody>
+      </.table_default>
     </div>
     """
   end
+
+  defp trashed_tab_label(0), do: gettext("Trashed")
+  defp trashed_tab_label(n), do: gettext("Trashed (%{count})", count: n)
 end
