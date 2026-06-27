@@ -329,7 +329,7 @@ defmodule PhoenixKitCRM.Attachments do
     name_to_iuuid = Map.new(interaction_uuids, &{interaction_folder_name(&1), &1})
     names = Map.keys(name_to_iuuid)
 
-    folder_to_iuuid =
+    fuuid_to_iuuid =
       from(f in Folder,
         where: f.name in ^names and is_nil(f.parent_uuid),
         select: {f.uuid, f.name}
@@ -337,24 +337,50 @@ defmodule PhoenixKitCRM.Attachments do
       |> repo().all()
       |> Map.new(fn {fuuid, name} -> {fuuid, Map.get(name_to_iuuid, name)} end)
 
-    fuuids = Map.keys(folder_to_iuuid)
-
-    files =
-      if fuuids == [] do
-        []
-      else
-        from(f in File,
-          where: f.folder_uuid in ^fuuids and f.status != "trashed",
-          order_by: [desc: f.inserted_at]
-        )
-        |> repo().all()
-      end
-
-    Enum.group_by(files, fn f -> Map.get(folder_to_iuuid, f.folder_uuid) end)
+    case Map.keys(fuuid_to_iuuid) do
+      [] -> %{}
+      fuuids -> group_interaction_files(fuuids, fuuid_to_iuuid)
+    end
   rescue
     error ->
       Logger.warning("[CRM] list_files_by_interaction failed: #{inspect(error)}")
       %{}
+  end
+
+  # Home files (folder_uuid = the interaction folder) PLUS files linked in via a
+  # FolderLink (identical-bytes uploads dedup to a link, not a copy), each mapped
+  # back to its interaction.
+  defp group_interaction_files(fuuids, fuuid_to_iuuid) do
+    home =
+      from(f in File,
+        where: f.folder_uuid in ^fuuids and f.status != "trashed",
+        order_by: [desc: f.inserted_at]
+      )
+      |> repo().all()
+      |> Enum.map(&{Map.get(fuuid_to_iuuid, &1.folder_uuid), &1})
+
+    links =
+      from(fl in FolderLink,
+        where: fl.folder_uuid in ^fuuids,
+        select: {fl.folder_uuid, fl.file_uuid}
+      )
+      |> repo().all()
+
+    (home ++ linked_file_pairs(links, fuuid_to_iuuid))
+    |> Enum.group_by(fn {iuuid, _f} -> iuuid end, fn {_iuuid, f} -> f end)
+  end
+
+  defp linked_file_pairs([], _fuuid_to_iuuid), do: []
+
+  defp linked_file_pairs(links, fuuid_to_iuuid) do
+    files =
+      from(f in File, where: f.uuid in ^Enum.map(links, &elem(&1, 1)) and f.status != "trashed")
+      |> repo().all()
+      |> Map.new(&{&1.uuid, &1})
+
+    links
+    |> Enum.map(fn {fuuid, fid} -> {Map.get(fuuid_to_iuuid, fuuid), Map.get(files, fid)} end)
+    |> Enum.reject(fn {_iuuid, f} -> is_nil(f) end)
   end
 
   @doc "Purge an interaction's attachment folder subtree (best-effort)."

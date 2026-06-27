@@ -10,19 +10,11 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   require Logger
 
   alias PhoenixKit.Modules.Storage
+  alias PhoenixKit.Users.Auth
   alias PhoenixKitCRM.{Attachments, Contacts, Interactions, StaffLink}
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
-  alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   @impl true
-  # The composer's file picker (core MediaSelectorModal) notifies results here.
-  def update(%{media_selected: uuids}, socket) when is_list(uuids) do
-    {:ok, socket |> stage_files(uuids) |> assign(:show_file_picker, false)}
-  end
-
-  def update(%{media_selector_closed: true}, socket),
-    do: {:ok, assign(socket, :show_file_picker, false)}
-
   def update(assigns, socket) do
     socket = assign(socket, assigns)
     offset = socket.assigns[:tz_offset] || 0
@@ -31,7 +23,6 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
      socket
      |> assign_new(:staged_parties, fn -> [] end)
      |> assign_new(:staged_files, fn -> [] end)
-     |> assign_new(:show_file_picker, fn -> false end)
      # Composer fields are controlled (kept in assigns) so re-renders triggered
      # by staging a party don't wipe what the user has typed. `c_occurred_at`
      # is the user's LOCAL wall-clock time (in their profile timezone); it's
@@ -44,6 +35,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
      |> assign_new(:save_error, fn -> nil end)
      |> assign(:staff_enabled, StaffLink.enabled?())
      |> assign(:storage_enabled, storage_enabled?())
+     |> maybe_allow_upload()
      |> load_interactions()}
   end
 
@@ -204,11 +196,12 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     end
   end
 
-  def handle_event("open_file_picker", _params, socket),
-    do: {:noreply, assign(socket, :show_file_picker, true)}
+  # The dropzone form's phx-change (auto_upload does the actual work via the
+  # progress callback) — just acknowledge it.
+  def handle_event("validate_attachment", _params, socket), do: {:noreply, socket}
 
-  def handle_event("close_file_picker", _params, socket),
-    do: {:noreply, assign(socket, :show_file_picker, false)}
+  def handle_event("cancel_attachment", %{"ref" => ref}, socket),
+    do: {:noreply, cancel_upload(socket, :attachments, ref)}
 
   def handle_event("remove_staged_file", %{"uuid" => uuid}, socket) do
     {:noreply,
@@ -218,8 +211,85 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   # Ignore any unexpected/forged event rather than crashing the LiveView.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  # Add newly-picked/uploaded files to the composer's staged list (deduped). The
-  # files are attached to the interaction's folder when it's saved.
+  # ── Inline upload (drag-drop / click) ──────────────────────────────
+  #
+  # Uploads are allowed on THIS component (like core's MediaSelectorModal), so
+  # the dropzone lives inline in the composer — no modal. Each finished entry is
+  # stored to a bucket (orphan, no folder), then staged; on save the staged
+  # uuids are adopted into the interaction's folder.
+
+  defp maybe_allow_upload(socket) do
+    cond do
+      uploads_allowed?(socket) ->
+        assign(socket, :can_attach, true)
+
+      socket.assigns.storage_enabled and Storage.list_enabled_buckets() != [] ->
+        socket
+        |> allow_upload(:attachments,
+          accept: :any,
+          max_entries: 10,
+          auto_upload: true,
+          progress: &handle_progress/3
+        )
+        |> assign(:can_attach, true)
+
+      true ->
+        assign(socket, :can_attach, false)
+    end
+  rescue
+    _ -> assign(socket, :can_attach, false)
+  end
+
+  defp uploads_allowed?(socket) do
+    match?(%{attachments: _}, socket.assigns[:uploads] || %{})
+  end
+
+  defp handle_progress(:attachments, entry, socket) do
+    if entry.done? do
+      case consume_uploaded_entry(socket, entry, &store_upload(socket, &1.path, entry)) do
+        uuid when is_binary(uuid) -> {:noreply, stage_files(socket, [uuid])}
+        _ -> {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Persist a consumed upload to a bucket (no folder yet — adopted on save).
+  defp store_upload(socket, path, entry) do
+    ext = entry.client_name |> Path.extname() |> String.replace_leading(".", "")
+    mime = entry.client_type || MIME.from_path(entry.client_name)
+
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: user_uuid} ->
+        hash = Auth.calculate_file_hash(path)
+
+        case Storage.store_file_in_buckets(
+               path,
+               file_type(mime),
+               user_uuid,
+               hash,
+               ext,
+               entry.client_name
+             ) do
+          {:ok, file, :duplicate} -> {:ok, file.uuid}
+          {:ok, file} -> {:ok, file.uuid}
+          _ -> {:postpone, :error}
+        end
+
+      _ ->
+        {:postpone, :error}
+    end
+  rescue
+    _ -> {:postpone, :error}
+  end
+
+  defp file_type("image/" <> _), do: "image"
+  defp file_type("video/" <> _), do: "video"
+  defp file_type(_), do: "other"
+
+  # Add newly-uploaded files to the composer's staged list (deduped). The files
+  # are attached to the interaction's folder when it's saved.
   defp stage_files(socket, uuids) do
     current = socket.assigns[:staged_files] || []
     seen = MapSet.new(current, & &1.uuid)
@@ -460,20 +530,52 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
             />
           </.form>
 
-          <%!-- Attachments — a dropzone-styled area opens the picker (which holds
-                the real drag-drop + upload); staged files attach to the
-                interaction on save. --%>
-          <div :if={@storage_enabled} class="flex flex-col gap-2">
-            <button
-              type="button"
-              phx-click="open_file_picker"
-              phx-target={@myself}
-              class="flex flex-col items-center justify-center gap-1 w-full py-5 px-3 rounded-box border-2 border-dashed border-base-300 text-base-content/60 hover:border-primary hover:text-base-content hover:bg-base-200/40 transition"
+          <%!-- Attachments — real inline drag-drop / click dropzone (uploads
+                like core's media picker); staged files attach on save. --%>
+          <div :if={@can_attach} class="flex flex-col gap-2">
+            <form phx-change="validate_attachment" phx-target={@myself} id={"crm-attach-#{@id}"}>
+              <div
+                phx-drop-target={@uploads.attachments.ref}
+                class="rounded-box border-2 border-dashed border-base-300 text-base-content/60 hover:border-primary hover:text-base-content hover:bg-base-200/40 transition"
+              >
+                <label
+                  for={@uploads.attachments.ref}
+                  class="flex flex-col items-center justify-center gap-1 w-full py-5 px-3 cursor-pointer"
+                >
+                  <.icon name="hero-arrow-up-tray" class="w-5 h-5" />
+                  <span class="text-sm font-medium">{gettext("Drag files here or click to upload")}</span>
+                  <span class="text-xs text-base-content/50">{gettext("Files or images")}</span>
+                </label>
+                <.live_file_input upload={@uploads.attachments} class="hidden" />
+              </div>
+            </form>
+
+            <%!-- In-progress uploads --%>
+            <div
+              :for={entry <- @uploads.attachments.entries}
+              class="flex items-center gap-2 text-xs"
             >
-              <.icon name="hero-arrow-up-tray" class="w-5 h-5" />
-              <span class="text-sm font-medium">{gettext("Attach files or images")}</span>
-              <span class="text-xs text-base-content/50">{gettext("Click to upload")}</span>
-            </button>
+              <span class="flex-1 truncate">{entry.client_name}</span>
+              <progress
+                value={entry.progress}
+                max="100"
+                class="progress progress-primary progress-xs w-24"
+              >
+                {entry.progress}%
+              </progress>
+              <button
+                type="button"
+                phx-click="cancel_attachment"
+                phx-value-ref={entry.ref}
+                phx-target={@myself}
+                aria-label={gettext("Cancel")}
+                class="text-error"
+              >
+                <.icon name="hero-x-mark" class="w-4 h-4" />
+              </button>
+            </div>
+
+            <%!-- Staged (uploaded, pending save) --%>
             <div :if={@staged_files != []} class="flex flex-wrap gap-2">
               <span :for={f <- @staged_files} class="badge badge-lg gap-1">
                 <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
@@ -598,22 +700,6 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
           </div>
         </div>
       </div>
-
-      <%!-- Composer file picker: upload-only, unscoped (files land orphan and
-            are adopted into the interaction's folder on save). Notifies here. --%>
-      <.live_component
-        :if={@storage_enabled}
-        module={MediaSelectorModal}
-        id={"#{@id}-file-selector"}
-        show={@show_file_picker}
-        mode={:multiple}
-        file_type_filter={:all}
-        browse={false}
-        selected_uuids={[]}
-        scope_folder_id={nil}
-        phoenix_kit_current_user={@phoenix_kit_current_user}
-        notify={{__MODULE__, @id}}
-      />
 
       <%!-- Timeline --%>
       <div :if={@interactions == []} class="text-center text-base-content/50 py-8">
