@@ -1,0 +1,132 @@
+defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
+  @moduledoc """
+  The **Interactions** tab of a CRM company — a read-only, aggregated feed of
+  every interaction logged on the company's member contacts. Each entry links to
+  the contact it's about (and shows the interaction's parties + attachments), so
+  you can jump to that person. Interactions are still *logged* on a contact's
+  page; this is a company-wide rollup.
+  """
+
+  use PhoenixKitWeb, :live_component
+  use Gettext, backend: PhoenixKitCRM.Gettext
+
+  alias PhoenixKit.Modules.Storage
+  alias PhoenixKitCRM.{Attachments, Companies, Interactions, Paths}
+  alias PhoenixKitCRM.Schemas.{Contact, Interaction}
+
+  @impl true
+  def update(assigns, socket) do
+    socket = assign(socket, assigns)
+    contact_uuids = member_contact_uuids(socket.assigns.company.uuid)
+    interactions = Interactions.list_for_contacts(contact_uuids)
+
+    interaction_files =
+      if storage_enabled?(),
+        do: Attachments.list_files_by_interaction(Enum.map(interactions, & &1.uuid)),
+        else: %{}
+
+    {:ok,
+     socket
+     |> assign_new(:tz_offset, fn -> 0 end)
+     |> assign(:interactions, interactions)
+     |> assign(:interaction_files, interaction_files)}
+  end
+
+  defp member_contact_uuids(company_uuid) do
+    company_uuid |> Companies.list_memberships() |> Enum.map(& &1.contact_uuid)
+  end
+
+  defp storage_enabled? do
+    Storage.enabled?()
+  rescue
+    _ -> false
+  end
+
+  defp format_local(nil, _offset), do: "—"
+
+  defp format_local(%DateTime{} = utc, offset) do
+    utc |> DateTime.add(offset * 3600, :second) |> Calendar.strftime("%Y-%m-%d %H:%M")
+  end
+
+  defp snapshot_detail(snapshot) when is_map(snapshot) do
+    role = snapshot["role_in_company"] || snapshot["job_title"]
+    company = snapshot["company"]
+
+    cond do
+      role && company -> "#{role}, #{company}"
+      role -> role
+      company -> company
+      true -> nil
+    end
+  end
+
+  defp snapshot_detail(_), do: nil
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <.icon name="hero-chat-bubble-left-right" class="w-5 h-5" />
+          {gettext("Interactions")} ({length(@interactions)})
+        </h2>
+        <p class="text-xs text-base-content/50 -mt-1">
+          {gettext("Logged on this company's contacts. Click a name to open their page.")}
+        </p>
+
+        <p :if={@interactions == []} class="text-sm text-base-content/60 py-2">
+          {gettext("No interactions logged for this company's contacts yet.")}
+        </p>
+
+        <ol :if={@interactions != []} class="flex flex-col gap-3 mt-1">
+          <li :for={i <- @interactions} class="rounded-box border border-base-200 p-3 flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <.link
+                :if={i.contact}
+                navigate={Paths.contact(i.contact.uuid)}
+                class="font-medium link link-hover inline-flex items-center gap-1.5"
+              >
+                <.icon name="hero-user" class="w-4 h-4 text-base-content/60" />
+                {Contact.display_name(i.contact)}
+              </.link>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-ghost badge-sm">{Interaction.type_label(i.interaction_type)}</span>
+                <span class="text-xs text-base-content/60">{format_local(i.occurred_at, @tz_offset)}</span>
+              </div>
+            </div>
+
+            <div :if={i.subject} class="text-sm font-medium">{i.subject}</div>
+            <div :if={i.body} class="text-sm whitespace-pre-wrap">{i.body}</div>
+
+            <div :if={i.parties != []} class="flex flex-wrap gap-1 mt-1">
+              <span class="text-xs text-base-content/50">{gettext("Involved:")}</span>
+              <span :for={p <- i.parties} class="badge badge-outline badge-sm gap-1">
+                {p.raw_name}<span
+                  :if={snapshot_detail(p.party_snapshot)}
+                  class="opacity-60"
+                >— {snapshot_detail(p.party_snapshot)}</span>
+              </span>
+            </div>
+
+            <% files = Map.get(@interaction_files, i.uuid, []) %>
+            <div :if={files != []} class="flex flex-wrap gap-2 mt-1">
+              <a
+                :for={f <- files}
+                href={Attachments.download_url(f)}
+                target="_blank"
+                rel="noopener"
+                class="inline-flex items-center gap-1 badge badge-ghost badge-sm hover:badge-outline"
+                title={f.original_file_name || f.file_name}
+              >
+                <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
+                <span class="max-w-[10rem] truncate">{f.original_file_name || f.file_name}</span>
+              </a>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+    """
+  end
+end

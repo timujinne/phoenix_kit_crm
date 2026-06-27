@@ -1,9 +1,9 @@
 defmodule PhoenixKitCRM.Web.CompanyShowLive do
   @moduledoc """
-  Show page for a CRM company. Tabs: Overview (details + contacts) and Events
-  always; Files + Images when core Storage is enabled; Comments when the
+  Show page for a CRM company. Tabs: Overview (details + contacts), Interactions
+  (a read-only rollup of interactions logged on the company's contacts), and
+  Events always; Files + Images when core Storage is enabled; Comments when the
   comments module is enabled. The header shows a circular logo (icon fallback).
-  Companies have no interaction feed, so no Interactions tab.
   """
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitCRM.Gettext
@@ -13,7 +13,7 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKitCRM.{Activity, Attachments, Companies, Paths}
   alias PhoenixKitCRM.Schemas.{Company, Contact}
-  alias PhoenixKitCRM.Web.{EventsComponent, MediaComponent}
+  alias PhoenixKitCRM.Web.{CompanyInteractionsComponent, EventsComponent, MediaComponent}
   alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   @impl true
@@ -145,6 +145,7 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   defp tab_defs(storage_enabled?, comments_enabled?) do
     [
       {"overview", gettext("Overview"), "hero-identification"},
+      {"interactions", gettext("Interactions"), "hero-chat-bubble-left-right"},
       {"events", gettext("Events"), "hero-clock"}
     ]
     |> maybe_concat(storage_enabled?, [
@@ -241,6 +242,15 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
             </li>
           </ul>
         </div>
+      </div>
+
+      <div :if={@tab == "interactions"}>
+        <.live_component
+          module={CompanyInteractionsComponent}
+          id={"crm-company-interactions-#{@company.uuid}"}
+          company={@company}
+          tz_offset={@tz_offset}
+        />
       </div>
 
       <div :if={@tab == "events"}>

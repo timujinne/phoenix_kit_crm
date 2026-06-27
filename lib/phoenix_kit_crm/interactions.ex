@@ -59,6 +59,22 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
+  @doc """
+  Interactions logged on any of the given contacts (as subject), newest first,
+  with the subject contact + parties preloaded. Powers the company's aggregated
+  read-only interactions feed.
+  """
+  @spec list_for_contacts([binary()]) :: [Interaction.t()]
+  def list_for_contacts([]), do: []
+
+  def list_for_contacts(contact_uuids) do
+    Interaction
+    |> where([i], i.contact_uuid in ^contact_uuids)
+    |> order_by([i], desc: i.occurred_at, desc: i.inserted_at)
+    |> repo().all()
+    |> repo().preload([:contact, parties: from(p in InteractionParty, order_by: p.position)])
+  end
+
   @spec get_interaction(UUIDv7.t() | String.t() | nil) :: Interaction.t() | nil
   def get_interaction(uuid) do
     with {:ok, _} <- Ecto.UUID.cast(uuid),
