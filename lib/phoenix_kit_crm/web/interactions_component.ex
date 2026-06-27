@@ -460,20 +460,20 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
             />
           </.form>
 
-          <%!-- Attachments — staged in the composer, attached to the interaction
-                when it's saved (the picker uploads; we hold the uuids). --%>
+          <%!-- Attachments — a dropzone-styled area opens the picker (which holds
+                the real drag-drop + upload); staged files attach to the
+                interaction on save. --%>
           <div :if={@storage_enabled} class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <span class="label-text font-semibold leading-none">{gettext("Attachments")}</span>
-              <button
-                type="button"
-                phx-click="open_file_picker"
-                phx-target={@myself}
-                class="btn btn-xs btn-outline gap-1"
-              >
-                <.icon name="hero-paper-clip" class="w-3.5 h-3.5" /> {gettext("Attach files")}
-              </button>
-            </div>
+            <button
+              type="button"
+              phx-click="open_file_picker"
+              phx-target={@myself}
+              class="flex flex-col items-center justify-center gap-1 w-full py-5 px-3 rounded-box border-2 border-dashed border-base-300 text-base-content/60 hover:border-primary hover:text-base-content hover:bg-base-200/40 transition"
+            >
+              <.icon name="hero-arrow-up-tray" class="w-5 h-5" />
+              <span class="text-sm font-medium">{gettext("Attach files or images")}</span>
+              <span class="text-xs text-base-content/50">{gettext("Click to upload")}</span>
+            </button>
             <div :if={@staged_files != []} class="flex flex-wrap gap-2">
               <span :for={f <- @staged_files} class="badge badge-lg gap-1">
                 <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
