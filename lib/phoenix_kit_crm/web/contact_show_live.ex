@@ -12,13 +12,15 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Users.Auth.User
-  alias PhoenixKitCRM.{Attachments, Contacts, Paths}
+  alias PhoenixKitCRM.{Activity, Attachments, Contacts, Paths}
   alias PhoenixKitCRM.PubSub, as: CRMPubSub
   alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitCRM.Web.{EventsComponent, InteractionsComponent, MediaComponent}
+  alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, socket}
+  def mount(_params, _session, socket),
+    do: {:ok, assign(socket, show_avatar_picker: false, avatar_folder_uuid: nil)}
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -113,7 +115,66 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
      socket |> assign(:contact, contact) |> assign(:avatar_url, Attachments.avatar_url(contact))}
   end
 
+  # The header avatar picker (a MediaSelectorModal with no `notify`) delivers its
+  # result here as a process message; the Files/Images tab pickers notify their
+  # own component instead, so they don't land here.
+  def handle_info({:media_selected, [uuid | _]}, socket) when is_binary(uuid) do
+    case Attachments.set_avatar(socket.assigns.contact, uuid) do
+      {:ok, _} ->
+        log_avatar(socket, "set")
+        send(self(), {:avatar_changed})
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, assign(socket, :show_avatar_picker, false)}
+  end
+
+  def handle_info({:media_selected, _}, socket),
+    do: {:noreply, assign(socket, :show_avatar_picker, false)}
+
+  def handle_info({:media_selector_closed}, socket),
+    do: {:noreply, assign(socket, :show_avatar_picker, false)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Open the avatar picker scoped to the contact's Images folder (so it suggests
+  # existing images and uploads land in the Images tab).
+  @impl true
+  def handle_event("edit_avatar", _params, socket) do
+    if socket.assigns.storage_enabled do
+      actor = current_user_uuid(socket.assigns)
+
+      case Attachments.ensure_folder(:contact, socket.assigns.contact.uuid, :images, actor) do
+        {:ok, folder_uuid} ->
+          {:noreply, assign(socket, avatar_folder_uuid: folder_uuid, show_avatar_picker: true)}
+
+        _ ->
+          {:noreply, put_flash(socket, :error, gettext("Could not open the image picker."))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_avatar", _params, socket) do
+    Attachments.clear_avatar(socket.assigns.contact)
+    log_avatar(socket, "removed")
+    send(self(), {:avatar_changed})
+    {:noreply, socket}
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp log_avatar(socket, verb) do
+    Activity.log("crm.contact_avatar_#{verb}",
+      actor_uuid: current_user_uuid(socket.assigns),
+      resource_type: "crm_contact",
+      resource_uuid: socket.assigns.contact.uuid,
+      metadata: %{}
+    )
+  end
 
   # Tab definitions drive both the nav and `valid_tabs/2` (deep-link clamp).
   # Files + Images appear only when core Storage is enabled; Comments only when
@@ -163,7 +224,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
     <div class="flex flex-col mx-auto max-w-4xl px-4 py-6 gap-6">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-3">
-          <.contact_avatar url={@avatar_url} contact={@contact} />
+          <.contact_avatar url={@avatar_url} contact={@contact} storage_enabled={@storage_enabled} />
           <div>
             <.link navigate={Paths.contacts()} class="text-sm text-base-content/60 hover:underline">
               ← {gettext("Contacts")}
@@ -263,27 +324,65 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
           current_user={@phoenix_kit_current_user}
         />
       </div>
+
+      <%!-- Header-avatar picker (Images folder; no `notify` → result lands in
+           this LV's handle_info). --%>
+      <.live_component
+        :if={@show_avatar_picker}
+        module={MediaSelectorModal}
+        id={"crm-contact-avatar-#{@contact.uuid}"}
+        show={true}
+        mode={:single}
+        file_type_filter={:image}
+        browse={true}
+        selected_uuids={Enum.reject([Attachments.avatar_uuid(@contact)], &is_nil/1)}
+        scope_folder_id={@avatar_folder_uuid}
+        phoenix_kit_current_user={@phoenix_kit_current_user}
+      />
     </div>
     """
   end
 
-  # Circular contact avatar (header) — the image if set, else initials.
+  # Circular contact avatar (header) — click to set/change (Storage required),
+  # hover to remove when set. Image if set, else initials.
   attr(:url, :string, default: nil)
   attr(:contact, :map, required: true)
+  attr(:storage_enabled, :boolean, default: false)
 
   defp contact_avatar(assigns) do
     ~H"""
-    <img
-      :if={@url}
-      src={@url}
-      alt=""
-      class="w-12 h-12 rounded-full object-cover ring-1 ring-base-300 shrink-0"
-    />
-    <div
-      :if={!@url}
-      class="w-12 h-12 rounded-full bg-base-300 text-base-content/60 flex items-center justify-center text-lg font-semibold shrink-0"
-    >
-      {avatar_initials(@contact)}
+    <div class="relative shrink-0 group">
+      <button
+        type="button"
+        phx-click="edit_avatar"
+        disabled={!@storage_enabled}
+        class="block w-12 h-12 rounded-full overflow-hidden ring-1 ring-base-300 bg-base-300 disabled:cursor-default"
+        aria-label={gettext("Change photo")}
+      >
+        <img :if={@url} src={@url} alt="" class="w-full h-full object-cover" />
+        <span
+          :if={!@url}
+          class="flex items-center justify-center w-full h-full text-lg font-semibold text-base-content/60"
+        >
+          {avatar_initials(@contact)}
+        </span>
+        <span
+          :if={@storage_enabled}
+          class="absolute inset-0 hidden group-hover:flex items-center justify-center bg-black/40 text-white rounded-full"
+        >
+          <.icon name="hero-camera" class="w-4 h-4" />
+        </span>
+      </button>
+      <button
+        :if={@storage_enabled and @url}
+        type="button"
+        phx-click="remove_avatar"
+        data-confirm={gettext("Remove this photo?")}
+        class="absolute -top-1 -right-1 btn btn-xs btn-circle btn-error opacity-0 group-hover:opacity-100 transition"
+        aria-label={gettext("Remove photo")}
+      >
+        <.icon name="hero-x-mark" class="w-3 h-3" />
+      </button>
     </div>
     """
   end

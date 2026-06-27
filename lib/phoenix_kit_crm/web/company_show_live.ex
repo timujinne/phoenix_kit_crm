@@ -11,12 +11,14 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   use PhoenixKitComments.Embed
 
   alias PhoenixKit.Modules.Storage
-  alias PhoenixKitCRM.{Attachments, Companies, Paths}
+  alias PhoenixKitCRM.{Activity, Attachments, Companies, Paths}
   alias PhoenixKitCRM.Schemas.{Company, Contact}
   alias PhoenixKitCRM.Web.{EventsComponent, MediaComponent}
+  alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, socket}
+  def mount(_params, _session, socket),
+    do: {:ok, assign(socket, show_avatar_picker: false, avatar_folder_uuid: nil)}
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -60,7 +62,74 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
      socket |> assign(:company, company) |> assign(:avatar_url, Attachments.avatar_url(company))}
   end
 
+  # Header-logo picker (a MediaSelectorModal with no `notify`) delivers its
+  # result here; the Files/Images tab pickers notify their own component.
+  def handle_info({:media_selected, [uuid | _]}, socket) when is_binary(uuid) do
+    case Attachments.set_avatar(socket.assigns.company, uuid) do
+      {:ok, _} ->
+        log_avatar(socket, "set")
+        send(self(), {:avatar_changed})
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, assign(socket, :show_avatar_picker, false)}
+  end
+
+  def handle_info({:media_selected, _}, socket),
+    do: {:noreply, assign(socket, :show_avatar_picker, false)}
+
+  def handle_info({:media_selector_closed}, socket),
+    do: {:noreply, assign(socket, :show_avatar_picker, false)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Open the logo picker scoped to the company's Images folder.
+  @impl true
+  def handle_event("edit_avatar", _params, socket) do
+    if socket.assigns.storage_enabled do
+      case Attachments.ensure_folder(
+             :company,
+             socket.assigns.company.uuid,
+             :images,
+             actor_uuid(socket)
+           ) do
+        {:ok, folder_uuid} ->
+          {:noreply, assign(socket, avatar_folder_uuid: folder_uuid, show_avatar_picker: true)}
+
+        _ ->
+          {:noreply, put_flash(socket, :error, gettext("Could not open the image picker."))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_avatar", _params, socket) do
+    Attachments.clear_avatar(socket.assigns.company)
+    log_avatar(socket, "removed")
+    send(self(), {:avatar_changed})
+    {:noreply, socket}
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp actor_uuid(socket) do
+    case socket.assigns[:phoenix_kit_current_user] do
+      %{uuid: uuid} -> uuid
+      _ -> nil
+    end
+  end
+
+  defp log_avatar(socket, verb) do
+    Activity.log("crm.company_avatar_#{verb}",
+      actor_uuid: actor_uuid(socket),
+      resource_type: "crm_company",
+      resource_uuid: socket.assigns.company.uuid,
+      metadata: %{}
+    )
+  end
 
   defp tab_defs(storage_enabled?, comments_enabled?) do
     [
@@ -106,7 +175,7 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
     <div class="flex flex-col mx-auto max-w-4xl px-4 py-6 gap-6">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-3">
-          <.company_logo url={@avatar_url} />
+          <.company_logo url={@avatar_url} storage_enabled={@storage_enabled} />
           <div>
             <.link navigate={Paths.companies()} class="text-sm text-base-content/60 hover:underline">
               ← {gettext("Companies")}
@@ -204,26 +273,64 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
           current_user={@phoenix_kit_current_user}
         />
       </div>
+
+      <%!-- Header-logo picker (Images folder; no `notify` → result lands in
+           this LV's handle_info). --%>
+      <.live_component
+        :if={@show_avatar_picker}
+        module={MediaSelectorModal}
+        id={"crm-company-avatar-#{@company.uuid}"}
+        show={true}
+        mode={:single}
+        file_type_filter={:image}
+        browse={true}
+        selected_uuids={Enum.reject([Attachments.avatar_uuid(@company)], &is_nil/1)}
+        scope_folder_id={@avatar_folder_uuid}
+        phoenix_kit_current_user={@phoenix_kit_current_user}
+      />
     </div>
     """
   end
 
-  # Circular company logo (header) — the image if set, else a building icon.
+  # Circular company logo (header) — click to set/change (Storage required),
+  # hover to remove when set. Image if set, else a building icon.
   attr(:url, :string, default: nil)
+  attr(:storage_enabled, :boolean, default: false)
 
   defp company_logo(assigns) do
     ~H"""
-    <img
-      :if={@url}
-      src={@url}
-      alt=""
-      class="w-12 h-12 rounded-full object-cover ring-1 ring-base-300 shrink-0"
-    />
-    <div
-      :if={!@url}
-      class="w-12 h-12 rounded-full bg-base-300 text-base-content/60 flex items-center justify-center shrink-0"
-    >
-      <.icon name="hero-building-office-2" class="w-6 h-6" />
+    <div class="relative shrink-0 group">
+      <button
+        type="button"
+        phx-click="edit_avatar"
+        disabled={!@storage_enabled}
+        class="block w-12 h-12 rounded-full overflow-hidden ring-1 ring-base-300 bg-base-300 disabled:cursor-default"
+        aria-label={gettext("Change logo")}
+      >
+        <img :if={@url} src={@url} alt="" class="w-full h-full object-cover" />
+        <span
+          :if={!@url}
+          class="flex items-center justify-center w-full h-full text-base-content/60"
+        >
+          <.icon name="hero-building-office-2" class="w-6 h-6" />
+        </span>
+        <span
+          :if={@storage_enabled}
+          class="absolute inset-0 hidden group-hover:flex items-center justify-center bg-black/40 text-white rounded-full"
+        >
+          <.icon name="hero-camera" class="w-4 h-4" />
+        </span>
+      </button>
+      <button
+        :if={@storage_enabled and @url}
+        type="button"
+        phx-click="remove_avatar"
+        data-confirm={gettext("Remove this logo?")}
+        class="absolute -top-1 -right-1 btn btn-xs btn-circle btn-error opacity-0 group-hover:opacity-100 transition"
+        aria-label={gettext("Remove logo")}
+      >
+        <.icon name="hero-x-mark" class="w-3 h-3" />
+      </button>
     </div>
     """
   end
