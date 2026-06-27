@@ -467,6 +467,15 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     utc |> DateTime.add(offset * 3600, :second) |> Calendar.strftime("%Y-%m-%d %H:%M")
   end
 
+  # Host-passed assigns (the contact this feed belongs to + the acting user's
+  # context, threaded from the show LiveView). Declared so the call site is
+  # checked and the contract is explicit.
+  attr(:contact, :map, required: true)
+  attr(:current_user_uuid, :string, default: nil)
+  attr(:current_user_name, :string, default: nil)
+  attr(:phoenix_kit_current_user, :map, default: nil)
+  attr(:tz_offset, :integer, default: 0)
+
   @impl true
   def render(assigns) do
     ~H"""
