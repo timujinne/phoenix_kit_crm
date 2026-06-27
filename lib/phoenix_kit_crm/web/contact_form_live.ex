@@ -304,7 +304,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
               checked={@allow_login}
               label={gettext("Allow this person to log in")}
             >
-              {gettext("Connects the contact to a PhoenixKit user (creates one if none exists for the email). Requires an email. They set a password via the normal sign-in flow.")}
+              {gettext("Connects the contact to a user account (creates one if none exists for the email). Requires an email. They set a password via the normal sign-in flow.")}
             </.checkbox>
 
             <div class="divider my-0"></div>
