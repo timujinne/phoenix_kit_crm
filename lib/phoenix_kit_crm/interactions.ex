@@ -197,12 +197,16 @@ defmodule PhoenixKitCRM.Interactions do
   # the Activity wrapper. Only the type + short subject are recorded (never the
   # free-text body).
   defp log_interaction(action, %Interaction{} = interaction, opts \\ []) do
+    # No `target_uuid`: core treats it as the affected *user* and fans out a
+    # notification, but an interaction isn't a user — setting it to the
+    # interaction uuid just triggers a failed notification insert. The interaction
+    # is referenced in metadata instead.
     Activity.log(action,
       actor_uuid: Keyword.get(opts, :actor_uuid) || interaction.owner_user_uuid,
       resource_type: "crm_contact",
       resource_uuid: interaction.contact_uuid,
-      target_uuid: interaction.uuid,
       metadata: %{
+        "interaction_uuid" => interaction.uuid,
         "interaction_type" => interaction.interaction_type,
         "subject" => interaction.subject
       }
