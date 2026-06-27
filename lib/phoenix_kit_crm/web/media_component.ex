@@ -1,17 +1,19 @@
-defmodule PhoenixKitCRM.Web.ContactMediaComponent do
+defmodule PhoenixKitCRM.Web.MediaComponent do
   @moduledoc """
-  The **Files** and **Images** tabs of a CRM contact (one component,
-  parameterized by `:kind`). Media is folder-scoped via core
-  `PhoenixKit.Modules.Storage` (see `PhoenixKitCRM.Attachments`): the contact's
-  root `crm-contact-<uuid>` folder for `:files`, the nested `Images` subfolder
+  The **Files** and **Images** tabs for a CRM record (a contact or a company),
+  parameterized by `:resource_type` (`:contact | :company`), the `:resource`
+  struct, and `:kind` (`:files | :images`). Media is folder-scoped via core
+  `PhoenixKit.Modules.Storage` (see `PhoenixKitCRM.Attachments`): a
+  `crm-<resource>-<uuid>` root folder for `:files`, a nested `Images` subfolder
   for `:images`.
 
   Upload/browse is delegated to core's `MediaSelectorModal` (scoped to the
-  folder via `scope_folder_id`, so the modal owns its own `allow_upload` — this
-  component never configures uploads). The modal `notify`s its result back; we
-  attach each picked/uploaded file to the folder and refresh. Removal soft-
-  trashes a sole-owner file or unlinks a shared one. Every add/remove is
-  activity-logged so it surfaces on the Events tab.
+  folder; the modal owns its own `allow_upload`). The modal `notify`s its result
+  back; we attach each file and refresh. Removal soft-trashes a sole-owner file
+  or unlinks a shared one. Every add/remove is activity-logged so it surfaces on
+  the Events tab. The Images tab can set the record's avatar (contact photo /
+  company logo). On the contact Files tab, files attached to that contact's
+  interactions roll up read-only.
   """
 
   use PhoenixKitWeb, :live_component
@@ -21,7 +23,6 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKitCRM.{Activity, Attachments, Interactions}
-  alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   # ── Updates ────────────────────────────────────────────────────────
@@ -37,19 +38,22 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
   def update(assigns, socket) do
     socket = assign(socket, assigns)
     kind = socket.assigns.kind
+    rtype = socket.assigns.resource_type
+    record = socket.assigns.resource
 
     {:ok,
      socket
      |> assign_new(:show_picker, fn -> false end)
-     |> assign(:folder_uuid, Attachments.folder_uuid(socket.assigns.contact.uuid, kind))
-     |> assign(:avatar_uuid, Attachments.avatar_uuid(socket.assigns.contact))
-     |> assign(:rollup_files, rollup_files(socket.assigns.contact.uuid, kind))
+     |> assign(:folder_uuid, Attachments.folder_uuid(rtype, record.uuid, kind))
+     |> assign(:avatar_uuid, Attachments.avatar_uuid(record))
+     |> assign(:avatar_noun, avatar_noun(rtype))
+     |> assign(:rollup_files, rollup_files(rtype, record.uuid, kind))
      |> reload()}
   end
 
-  # Files tab also rolls up files attached to the contact's interactions
-  # (read-only here — those are managed on the interaction). Other tabs: none.
-  defp rollup_files(contact_uuid, :files) do
+  # The contact Files tab rolls up files attached to that contact's interactions
+  # (read-only here — managed on the interaction). Companies have no interactions.
+  defp rollup_files(:contact, contact_uuid, :files) do
     contact_uuid
     |> Interactions.interaction_uuids_for_contact()
     |> Attachments.list_files_by_interaction()
@@ -57,7 +61,10 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
     |> List.flatten()
   end
 
-  defp rollup_files(_contact_uuid, _kind), do: []
+  defp rollup_files(_rtype, _uuid, _kind), do: []
+
+  defp avatar_noun(:company), do: gettext("logo")
+  defp avatar_noun(_), do: gettext("profile photo")
 
   # ── Events ─────────────────────────────────────────────────────────
 
@@ -74,15 +81,15 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
 
   def handle_event("close_picker", _params, socket), do: {:noreply, close_picker(socket)}
 
-  # Set one of the contact's images as the avatar. The host (ContactShowLive)
-  # owns the header avatar, so notify it to reload after the metadata write.
+  # Set one of the record's images as its avatar. The host owns the header
+  # avatar, so notify it to reload after the metadata write.
   def handle_event("set_as_avatar", %{"uuid" => uuid}, socket) do
-    case Attachments.set_avatar(socket.assigns.contact, uuid) do
+    case Attachments.set_avatar(socket.assigns.resource, uuid) do
       {:ok, _} ->
-        Activity.log("crm.contact_avatar_set",
+        Activity.log("crm.#{socket.assigns.resource_type}_avatar_set",
           actor_uuid: Activity.actor_uuid(socket),
-          resource_type: "crm_contact",
-          resource_uuid: socket.assigns.contact.uuid,
+          resource_type: activity_resource_type(socket),
+          resource_uuid: socket.assigns.resource.uuid,
           metadata: %{}
         )
 
@@ -91,10 +98,10 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
         {:noreply,
          socket
          |> assign(:avatar_uuid, uuid)
-         |> put_flash_safe(:info, gettext("Profile photo updated."))}
+         |> put_flash_safe(:info, gettext("Saved."))}
 
       {:error, _} ->
-        {:noreply, put_flash_safe(socket, :error, gettext("Could not set the photo."))}
+        {:noreply, put_flash_safe(socket, :error, gettext("Could not set the image."))}
     end
   end
 
@@ -118,7 +125,7 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
   # reference a trashed file, and tell the host to refresh.
   defp maybe_clear_avatar(socket, uuid) do
     if uuid == socket.assigns[:avatar_uuid] do
-      Attachments.clear_avatar(socket.assigns.contact)
+      Attachments.clear_avatar(socket.assigns.resource)
       send(self(), {:avatar_changed})
       assign(socket, :avatar_uuid, nil)
     else
@@ -130,7 +137,8 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
 
   defp ensure_folder(socket) do
     Attachments.ensure_folder(
-      socket.assigns.contact.uuid,
+      socket.assigns.resource_type,
+      socket.assigns.resource.uuid,
       socket.assigns.kind,
       Activity.actor_uuid(socket)
     )
@@ -154,13 +162,13 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
   end
 
   defp do_attach(socket, folder_uuid, uuids) do
-    # Don't add media to a trashed contact (the soft-delete contract). Reachable
-    # because the tab stays interactive on a trashed contact; this is the backstop.
-    if Contact.trashed?(socket.assigns.contact) do
+    # Don't add media to a trashed record (the soft-delete contract). Reachable
+    # because the tab stays interactive on a trashed record; this is the backstop.
+    if socket.assigns.resource.status == "trashed" do
       put_flash_safe(
         socket,
         :error,
-        gettext("This contact is in the trash — restore them before adding media.")
+        gettext("This record is in the trash — restore it before adding media.")
       )
     else
       {accepted, rejected} = partition_for_kind(socket.assigns.kind, uuids)
@@ -219,13 +227,15 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
   defp only_for(_files), do: :non_images
 
   defp log(socket, verb, metadata) do
-    Activity.log("crm.contact_#{noun(socket)}_#{verb}",
+    Activity.log("crm.#{socket.assigns.resource_type}_#{noun(socket)}_#{verb}",
       actor_uuid: Activity.actor_uuid(socket),
-      resource_type: "crm_contact",
-      resource_uuid: socket.assigns.contact.uuid,
+      resource_type: activity_resource_type(socket),
+      resource_uuid: socket.assigns.resource.uuid,
       metadata: metadata
     )
   end
+
+  defp activity_resource_type(socket), do: "crm_#{socket.assigns.resource_type}"
 
   defp noun(%{assigns: %{kind: :images}}), do: "image"
   defp noun(_), do: "file"
@@ -301,13 +311,17 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
                   "btn btn-xs btn-circle absolute top-1 left-1 border-0 bg-base-100/80 transition",
                   if(f.uuid == @avatar_uuid, do: "opacity-100 text-warning", else: "opacity-0 group-hover:opacity-100")
                 ]}
-                title={if(f.uuid == @avatar_uuid, do: gettext("Current profile photo"), else: gettext("Set as profile photo"))}
-                aria-label={gettext("Set as profile photo")}
+                title={
+                  if(f.uuid == @avatar_uuid,
+                    do: gettext("Current %{noun}", noun: @avatar_noun),
+                    else: gettext("Set as %{noun}", noun: @avatar_noun))
+                }
+                aria-label={gettext("Set as %{noun}", noun: @avatar_noun)}
               >
                 <.icon name="hero-star" class="w-3.5 h-3.5" />
               </button>
               <span :if={f.uuid == @avatar_uuid} class="badge badge-xs badge-primary absolute bottom-1 left-1">
-                {gettext("Avatar")}
+                {@avatar_noun}
               </span>
             </div>
           </div>

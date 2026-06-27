@@ -26,7 +26,6 @@ defmodule PhoenixKitCRM.Attachments do
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.{File, Folder, FolderLink}
-  alias PhoenixKitCRM.Schemas.Contact
 
   @images_folder_name "Images"
   @interaction_prefix "crm-interaction-"
@@ -37,9 +36,13 @@ defmodule PhoenixKitCRM.Attachments do
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
-  @doc "Deterministic root folder name for a contact's files."
-  @spec root_folder_name(binary()) :: binary()
-  def root_folder_name(contact_uuid), do: "crm-contact-#{contact_uuid}"
+  @typedoc "Which CRM record a folder belongs to."
+  @type resource :: :contact | :company
+
+  @doc "Deterministic root folder name for a record's files (`crm-<resource>-<uuid>`)."
+  @spec root_folder_name(resource(), binary()) :: binary()
+  def root_folder_name(resource, uuid) when resource in [:contact, :company],
+    do: "crm-#{resource}-#{uuid}"
 
   # ── Folder resolution ──────────────────────────────────────────────
 
@@ -48,12 +51,12 @@ defmodule PhoenixKitCRM.Attachments do
   `Images` subfolder) **without creating** it. Returns the uuid or `nil` (used
   on render so viewing a tab doesn't spawn empty folders).
   """
-  @spec folder_uuid(binary(), :files | :images) :: binary() | nil
-  def folder_uuid(contact_uuid, :files),
-    do: uuid_of(get_folder(root_folder_name(contact_uuid), nil))
+  @spec folder_uuid(resource(), binary(), :files | :images) :: binary() | nil
+  def folder_uuid(resource, uuid, :files),
+    do: uuid_of(get_folder(root_folder_name(resource, uuid), nil))
 
-  def folder_uuid(contact_uuid, :images) do
-    case get_folder(root_folder_name(contact_uuid), nil) do
+  def folder_uuid(resource, uuid, :images) do
+    case get_folder(root_folder_name(resource, uuid), nil) do
       %Folder{uuid: root} -> uuid_of(get_folder(@images_folder_name, root))
       _ -> nil
     end
@@ -65,14 +68,14 @@ defmodule PhoenixKitCRM.Attachments do
   re-resolves the winner. Call when an action needs the folder to exist (opening
   the picker / handling a selection).
   """
-  @spec ensure_folder(binary(), :files | :images, binary() | nil) ::
+  @spec ensure_folder(resource(), binary(), :files | :images, binary() | nil) ::
           {:ok, binary()} | {:error, term()}
-  def ensure_folder(contact_uuid, :files, actor_uuid) do
-    find_or_create(root_folder_name(contact_uuid), nil, actor_uuid)
+  def ensure_folder(resource, uuid, :files, actor_uuid) do
+    find_or_create(root_folder_name(resource, uuid), nil, actor_uuid)
   end
 
-  def ensure_folder(contact_uuid, :images, actor_uuid) do
-    with {:ok, root} <- find_or_create(root_folder_name(contact_uuid), nil, actor_uuid) do
+  def ensure_folder(resource, uuid, :images, actor_uuid) do
+    with {:ok, root} <- find_or_create(root_folder_name(resource, uuid), nil, actor_uuid) do
       find_or_create(@images_folder_name, root, actor_uuid)
     end
   end
@@ -266,14 +269,14 @@ defmodule PhoenixKitCRM.Attachments do
   # ── Lifecycle ──────────────────────────────────────────────────────
 
   @doc """
-  Permanently purges a contact's media — deletes the root folder and its whole
+  Permanently purges a record's media — deletes the root folder and its whole
   subtree (the nested `Images` folder + every file) via core's cascading
   `delete_folder_completely/1`. Best-effort: logs and returns `:ok` on any
-  failure so it never blocks a contact deletion. Call only on a **permanent**
-  delete (soft-trash keeps the files).
+  failure so it never blocks a deletion. Call only on a **permanent** delete
+  (soft-trash keeps the files).
   """
-  @spec purge_contact_media(binary()) :: :ok
-  def purge_contact_media(contact_uuid), do: purge_folder(root_folder_name(contact_uuid))
+  @spec purge_media(resource(), binary()) :: :ok
+  def purge_media(resource, uuid), do: purge_folder(root_folder_name(resource, uuid))
 
   defp purge_folder(name) do
     case get_folder(name, nil) do
@@ -441,16 +444,17 @@ defmodule PhoenixKitCRM.Attachments do
     _ -> nil
   end
 
-  # ── Avatar ─────────────────────────────────────────────────────────
+  # ── Avatar / logo ──────────────────────────────────────────────────
   #
-  # A contact's avatar is a single image-file pointer kept in `Contact.metadata`
-  # (`"avatar_uuid"`) — no new column, mirroring staff's avatar pointer. The
-  # image is one of the contact's Images-folder files (the picker is scoped to
-  # that folder). Server-owned: written only via `set_avatar/2`/`clear_avatar/1`.
+  # A record's avatar (contact photo / company logo) is a single image-file
+  # pointer kept in its `metadata` (`"avatar_uuid"`) — no new column. The image
+  # is one of the record's Images-folder files (the picker is scoped there).
+  # Server-owned: written only via `set_avatar/2` / `clear_avatar/1`. Works for
+  # any record with `metadata` + `status` (Contact, Company).
 
-  @doc "The contact's avatar file uuid (from metadata), or nil."
-  @spec avatar_uuid(Contact.t()) :: binary() | nil
-  def avatar_uuid(%Contact{metadata: m}) when is_map(m) do
+  @doc "The record's avatar file uuid (from metadata), or nil."
+  @spec avatar_uuid(struct()) :: binary() | nil
+  def avatar_uuid(%{metadata: m}) when is_map(m) do
     case Map.get(m, @avatar_key) do
       uuid when is_binary(uuid) and uuid != "" -> uuid
       _ -> nil
@@ -459,10 +463,10 @@ defmodule PhoenixKitCRM.Attachments do
 
   def avatar_uuid(_), do: nil
 
-  @doc "The contact's avatar `File` struct, or nil if unset / missing / trashed."
-  @spec avatar_file(Contact.t()) :: File.t() | nil
-  def avatar_file(contact) do
-    case avatar_uuid(contact) do
+  @doc "The record's avatar `File` struct, or nil if unset / missing / trashed."
+  @spec avatar_file(struct()) :: File.t() | nil
+  def avatar_file(record) do
+    case avatar_uuid(record) do
       nil ->
         nil
 
@@ -477,32 +481,32 @@ defmodule PhoenixKitCRM.Attachments do
     _ -> nil
   end
 
-  @doc "Thumbnail URL for the contact's avatar (or nil)."
-  @spec avatar_url(Contact.t()) :: String.t() | nil
-  def avatar_url(contact), do: contact |> avatar_file() |> thumb_url()
+  @doc "Thumbnail URL for the record's avatar (or nil)."
+  @spec avatar_url(struct()) :: String.t() | nil
+  def avatar_url(record), do: record |> avatar_file() |> thumb_url()
 
   @doc """
-  Points the contact's avatar at `file_uuid` (server-owned metadata write).
-  Refuses a trashed contact (`{:error, :contact_trashed}`); clearing stays
-  unguarded.
+  Points the record's avatar at `file_uuid` (server-owned metadata write).
+  Refuses a trashed record (`{:error, :record_trashed}`); clearing is unguarded.
   """
-  @spec set_avatar(Contact.t(), binary()) :: {:ok, Contact.t()} | {:error, term()}
-  def set_avatar(%Contact{} = contact, file_uuid) when is_binary(file_uuid) and file_uuid != "" do
-    if Contact.trashed?(contact),
-      do: {:error, :contact_trashed},
-      else: put_metadata(contact, @avatar_key, file_uuid)
-  end
+  @spec set_avatar(struct(), binary()) :: {:ok, struct()} | {:error, term()}
+  def set_avatar(%{status: "trashed"}, file_uuid) when is_binary(file_uuid) and file_uuid != "",
+    do: {:error, :record_trashed}
 
-  @doc "Clears the contact's avatar pointer."
-  @spec clear_avatar(Contact.t()) :: {:ok, Contact.t()} | {:error, term()}
-  def clear_avatar(%Contact{} = contact), do: put_metadata(contact, @avatar_key, nil)
+  def set_avatar(%{metadata: _} = record, file_uuid)
+      when is_binary(file_uuid) and file_uuid != "",
+      do: put_metadata(record, @avatar_key, file_uuid)
 
-  defp put_metadata(contact, key, value) do
-    metadata = contact.metadata || %{}
+  @doc "Clears the record's avatar pointer."
+  @spec clear_avatar(struct()) :: {:ok, struct()} | {:error, term()}
+  def clear_avatar(%{metadata: _} = record), do: put_metadata(record, @avatar_key, nil)
+
+  defp put_metadata(record, key, value) do
+    metadata = record.metadata || %{}
 
     metadata =
       if is_nil(value), do: Map.delete(metadata, key), else: Map.put(metadata, key, value)
 
-    contact |> Ecto.Changeset.change(metadata: metadata) |> repo().update()
+    record |> Ecto.Changeset.change(metadata: metadata) |> repo().update()
   end
 end

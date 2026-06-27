@@ -49,6 +49,9 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   def handle_event("delete", %{"uuid" => uuid}, socket) do
     with %Company{} = c <- Companies.get_company(uuid),
          {:ok, _} <- Companies.delete_company(c) do
+      # Permanent delete cascades the company's media folder subtree (best-effort).
+      PhoenixKitCRM.Attachments.purge_media(:company, uuid)
+
       Activity.log(
         "crm.company_deleted",
         Activity.actor_opts(socket) ++ [resource_type: "crm_company", resource_uuid: uuid]

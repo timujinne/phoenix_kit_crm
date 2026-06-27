@@ -15,7 +15,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   alias PhoenixKitCRM.{Attachments, Contacts, Paths}
   alias PhoenixKitCRM.PubSub, as: CRMPubSub
   alias PhoenixKitCRM.Schemas.Contact
-  alias PhoenixKitCRM.Web.{ContactEventsComponent, ContactMediaComponent, InteractionsComponent}
+  alias PhoenixKitCRM.Web.{EventsComponent, InteractionsComponent, MediaComponent}
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -92,7 +92,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
           )
 
         "events" ->
-          send_update(ContactEventsComponent, id: "crm-events-#{socket.assigns.contact.uuid}")
+          send_update(EventsComponent, id: "crm-events-#{socket.assigns.contact.uuid}")
 
         _ ->
           :ok
@@ -224,29 +224,32 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
 
       <div :if={@tab == "events"}>
         <.live_component
-          module={ContactEventsComponent}
+          module={EventsComponent}
           id={"crm-events-#{@contact.uuid}"}
-          contact={@contact}
+          resource_type="crm_contact"
+          resource_uuid={@contact.uuid}
           tz_offset={@tz_offset}
         />
       </div>
 
       <div :if={@tab == "files"}>
         <.live_component
-          module={ContactMediaComponent}
+          module={MediaComponent}
           id={"crm-files-#{@contact.uuid}"}
           kind={:files}
-          contact={@contact}
+          resource_type={:contact}
+          resource={@contact}
           phoenix_kit_current_user={@phoenix_kit_current_user}
         />
       </div>
 
       <div :if={@tab == "images"}>
         <.live_component
-          module={ContactMediaComponent}
+          module={MediaComponent}
           id={"crm-images-#{@contact.uuid}"}
           kind={:images}
-          contact={@contact}
+          resource_type={:contact}
+          resource={@contact}
           phoenix_kit_current_user={@phoenix_kit_current_user}
         />
       </div>

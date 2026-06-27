@@ -50,6 +50,19 @@ defmodule PhoenixKitCRM.ActivityLabels do
   def describe("crm.contact_avatar_removed", _),
     do: {"hero-user-circle", gettext("Profile photo removed")}
 
+  def describe("crm.company_file_added", _), do: {"hero-document-plus", gettext("File added")}
+
+  def describe("crm.company_file_removed", _),
+    do: {"hero-document-minus", gettext("File removed")}
+
+  def describe("crm.company_image_added", _), do: {"hero-photo", gettext("Image added")}
+
+  def describe("crm.company_image_removed", _), do: {"hero-photo", gettext("Image removed")}
+
+  def describe("crm.company_avatar_set", _), do: {"hero-photo", gettext("Logo updated")}
+
+  def describe("crm.company_avatar_removed", _), do: {"hero-photo", gettext("Logo removed")}
+
   def describe(action, _), do: {"hero-bolt", humanize(action)}
 
   @doc "Optional secondary line for an entry (e.g. an interaction's subject)."
@@ -65,6 +78,15 @@ defmodule PhoenixKitCRM.ActivityLabels do
 
   def detail("crm.contact_image_added", %{"count" => n}) when is_integer(n) and n > 0,
     do: ngettext("%{count} image", "%{count} images", n)
+
+  def detail(action, %{"count" => n})
+      when action in ["crm.company_file_added", "crm.company_image_added"] and is_integer(n) and
+             n > 0 do
+    case action do
+      "crm.company_file_added" -> ngettext("%{count} file", "%{count} files", n)
+      _ -> ngettext("%{count} image", "%{count} images", n)
+    end
+  end
 
   def detail(_action, _metadata), do: nil
 

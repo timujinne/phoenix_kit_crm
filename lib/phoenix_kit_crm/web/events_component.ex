@@ -1,14 +1,13 @@
-defmodule PhoenixKitCRM.Web.ContactEventsComponent do
+defmodule PhoenixKitCRM.Web.EventsComponent do
   @moduledoc """
-  The **Events** tab of a CRM contact — a read-only, paginated feed of the
-  `PhoenixKit.Activity` entries scoped to this contact (`resource_type:
-  "crm_contact"` + the contact's uuid). Contact create/update/trash and every
-  logged interaction land here, so it's the contact's audit timeline.
+  The **Events** tab for a CRM record — a read-only, paginated feed of the
+  `PhoenixKit.Activity` entries scoped to it (`resource_type` + `resource_uuid`).
+  Parameterized by `:resource_type` (`"crm_contact"` / `"crm_company"`) and
+  `:resource_uuid`, so it serves both the contact and company profiles.
 
   Labels/icons come from `PhoenixKitCRM.ActivityLabels`; the badge colour reuses
   core `PhoenixKit.Activity.action_badge_color/1`. Absolute timestamps render in
-  the viewer's timezone (the `tz_offset` assign, in hours); the relative label is
-  offset-agnostic.
+  the viewer's timezone (the `tz_offset` assign, in hours).
   """
 
   use PhoenixKitWeb, :live_component
@@ -42,14 +41,14 @@ defmodule PhoenixKitCRM.Web.ContactEventsComponent do
     {:noreply, socket |> assign(:page, page) |> load_events()}
   end
 
-  # Scope to THIS contact via core's filters (`resource_type` + `resource_uuid`),
+  # Scope to THIS record via core's filters (`resource_type` + `resource_uuid`),
   # offset-paginated. Rescued so a transient query error renders an empty feed
   # rather than crashing the tab.
   defp load_events(socket) do
     result =
       safe_list(
-        resource_type: "crm_contact",
-        resource_uuid: socket.assigns.contact.uuid,
+        resource_type: socket.assigns.resource_type,
+        resource_uuid: socket.assigns.resource_uuid,
         page: socket.assigns.page,
         per_page: @per_page,
         preload: [:actor]
@@ -71,10 +70,10 @@ defmodule PhoenixKitCRM.Web.ContactEventsComponent do
   defp actor_label(%{actor: %{email: email}}) when is_binary(email), do: email
   defp actor_label(_), do: gettext("System")
 
-  # Deep link to the core admin Activity viewer, scoped to this contact.
-  defp activity_log_path(contact_uuid) do
+  # Deep link to the core admin Activity viewer, scoped to this record.
+  defp activity_log_path(resource_type, resource_uuid) do
     query =
-      URI.encode_query(%{"resource_type" => "crm_contact", "resource_uuid" => contact_uuid})
+      URI.encode_query(%{"resource_type" => resource_type, "resource_uuid" => resource_uuid})
 
     Routes.path("/admin/activity?#{query}")
   end
@@ -115,14 +114,17 @@ defmodule PhoenixKitCRM.Web.ContactEventsComponent do
           <h2 class="card-title text-lg">
             <.icon name="hero-clock" class="w-5 h-5" /> {gettext("Events")} ({@total})
           </h2>
-          <.link navigate={activity_log_path(@contact.uuid)} class="btn btn-ghost btn-sm">
+          <.link
+            navigate={activity_log_path(@resource_type, @resource_uuid)}
+            class="btn btn-ghost btn-sm"
+          >
             {gettext("Open in Activity log")}
             <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" />
           </.link>
         </div>
 
         <p :if={@events == []} class="text-sm text-base-content/60 py-2">
-          {gettext("No activity recorded for this contact yet.")}
+          {gettext("No activity recorded yet.")}
         </p>
 
         <ul :if={@events != []} class="flex flex-col divide-y divide-base-200">
