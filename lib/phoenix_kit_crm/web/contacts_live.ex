@@ -105,7 +105,7 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
                   {Contact.display_name(c)}
                 </.link>
               </td>
-              <td class="text-base-content/70">{company_label(c)}</td>
+              <td class="text-base-content/70"><.company_cell contact={c} /></td>
               <td class="text-base-content/70">{c.email || "—"}</td>
               <td>
                 <span :if={c.user_uuid} class="badge badge-success badge-sm gap-1">
@@ -141,13 +141,20 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
     """
   end
 
-  defp company_label(contact) do
-    case Contacts.primary_membership(contact) do
-      %{company: %{name: name}} = m when is_binary(name) ->
-        [name, m.role_in_company] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" · ")
+  # The contact's primary company (linked) + role, or "—".
+  attr(:contact, :map, required: true)
 
-      _ ->
-        "—"
-    end
+  defp company_cell(assigns) do
+    assigns = assign(assigns, :m, Contacts.primary_membership(assigns.contact))
+
+    ~H"""
+    <span :if={!company_name(@m)}>—</span>
+    <span :if={company_name(@m)}>
+      <.link navigate={Paths.company(@m.company_uuid)} class="link link-hover">{company_name(@m)}</.link><span :if={@m.role_in_company not in [nil, ""]}>{" · " <> @m.role_in_company}</span>
+    </span>
+    """
   end
+
+  defp company_name(%{company: %{name: name}}) when is_binary(name), do: name
+  defp company_name(_), do: nil
 end

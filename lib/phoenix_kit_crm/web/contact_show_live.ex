@@ -248,9 +248,9 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
               </span>
             </h1>
             <div :if={@membership} class="text-sm text-base-content/60 mt-1">
-              {[membership_company(@membership), @membership.role_in_company, @membership.department]
-              |> Enum.reject(&(&1 in [nil, ""]))
-              |> Enum.join(" · ")}
+              <.link navigate={Paths.company(@membership.company_uuid)} class="link link-hover">
+                {membership_company(@membership)}
+              </.link>{role_dept_suffix(@membership)}
             </div>
           </div>
         </div>
@@ -274,7 +274,19 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
         <div class="card-body grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
           <.field label={gettext("Email")} value={@contact.email} />
           <.field label={gettext("Phone")} value={@contact.phone} />
-          <.field label={gettext("Company")} value={@membership && membership_company(@membership)} />
+          <div>
+            <div class="text-xs uppercase tracking-wide text-base-content/50">{gettext("Company")}</div>
+            <div class="text-sm">
+              <.link
+                :if={@membership}
+                navigate={Paths.company(@membership.company_uuid)}
+                class="link link-hover"
+              >
+                {membership_company(@membership)}
+              </.link>
+              <span :if={!@membership}>—</span>
+            </div>
+          </div>
           <.field label={gettext("Role in company")} value={@membership && @membership.role_in_company} />
           <.field label={gettext("Department / team")} value={@membership && @membership.department} />
           <.field label={gettext("Login account")} value={if(@contact.user_uuid, do: gettext("Connected"), else: gettext("None"))} />
@@ -421,6 +433,14 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
 
   defp membership_company(%{company: %{name: name}}) when is_binary(name), do: name
   defp membership_company(_), do: nil
+
+  # " · Role · Dept" suffix after the (linked) company name, or "" when absent.
+  defp role_dept_suffix(membership) do
+    case [membership.role_in_company, membership.department] |> Enum.reject(&(&1 in [nil, ""])) do
+      [] -> ""
+      parts -> " · " <> Enum.join(parts, " · ")
+    end
+  end
 
   defp current_user_uuid(assigns) do
     case assigns[:phoenix_kit_current_user] do

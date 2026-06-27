@@ -15,7 +15,7 @@ defmodule PhoenixKitCRM.Web.EventsComponent do
 
   alias PhoenixKit.Activity
   alias PhoenixKit.Utils.Routes
-  alias PhoenixKitCRM.ActivityLabels
+  alias PhoenixKitCRM.{ActivityLabels, Paths}
 
   @per_page 20
 
@@ -69,6 +69,23 @@ defmodule PhoenixKitCRM.Web.EventsComponent do
 
   defp actor_label(%{actor: %{email: email}}) when is_binary(email), do: email
   defp actor_label(_), do: gettext("System")
+
+  # Link the actor to their user page when known (else plain "System").
+  defp actor_path(%{actor_uuid: uuid, actor: %{email: email}})
+       when is_binary(uuid) and uuid != "" and is_binary(email),
+       do: Paths.user_view(uuid)
+
+  defp actor_path(_), do: nil
+
+  attr(:entry, :map, required: true)
+
+  defp actor_name(assigns) do
+    assigns = assign(assigns, :path, actor_path(assigns.entry))
+
+    ~H"""
+    <.link :if={@path} navigate={@path} class="link link-hover">{actor_label(@entry)}</.link><span :if={!@path}>{actor_label(@entry)}</span>
+    """
+  end
 
   # Deep link to the core admin Activity viewer, scoped to this record.
   defp activity_log_path(resource_type, resource_uuid) do
@@ -140,7 +157,7 @@ defmodule PhoenixKitCRM.Web.EventsComponent do
                 <span :if={detail} class="text-base-content/60">— {detail}</span>
               </div>
               <div class="text-xs text-base-content/50" title={format_at(e.inserted_at, @tz_offset)}>
-                {actor_label(e)} · {relative_time(e.inserted_at, @tz_offset)}
+                <.actor_name entry={e} /> · {relative_time(e.inserted_at, @tz_offset)}
               </div>
             </div>
           </li>

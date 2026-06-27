@@ -10,6 +10,8 @@ defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
   use PhoenixKitWeb, :live_component
   use Gettext, backend: PhoenixKitCRM.Gettext
 
+  import PhoenixKitCRM.Web.InteractionHelpers, only: [party_badge: 1]
+
   alias PhoenixKit.Modules.Storage
   alias PhoenixKitCRM.{Attachments, Companies, Interactions, Paths}
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
@@ -47,20 +49,6 @@ defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
   defp format_local(%DateTime{} = utc, offset) do
     utc |> DateTime.add(offset * 3600, :second) |> Calendar.strftime("%Y-%m-%d %H:%M")
   end
-
-  defp snapshot_detail(snapshot) when is_map(snapshot) do
-    role = snapshot["role_in_company"] || snapshot["job_title"]
-    company = snapshot["company"]
-
-    cond do
-      role && company -> "#{role}, #{company}"
-      role -> role
-      company -> company
-      true -> nil
-    end
-  end
-
-  defp snapshot_detail(_), do: nil
 
   @impl true
   def render(assigns) do
@@ -101,12 +89,7 @@ defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
 
             <div :if={i.parties != []} class="flex flex-wrap gap-1 mt-1">
               <span class="text-xs text-base-content/50">{gettext("Involved:")}</span>
-              <span :for={p <- i.parties} class="badge badge-outline badge-sm gap-1">
-                {p.raw_name}<span
-                  :if={snapshot_detail(p.party_snapshot)}
-                  class="opacity-60"
-                >— {snapshot_detail(p.party_snapshot)}</span>
-              </span>
+              <.party_badge :for={p <- i.parties} party={p} />
             </div>
 
             <% files = Map.get(@interaction_files, i.uuid, []) %>

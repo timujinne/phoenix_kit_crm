@@ -9,6 +9,8 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
 
   require Logger
 
+  import PhoenixKitCRM.Web.InteractionHelpers, only: [party_badge: 1]
+
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Users.Auth
   alias PhoenixKitCRM.{Attachments, Contacts, Interactions, StaffLink}
@@ -735,9 +737,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
             <div :if={i.body} class="text-sm whitespace-pre-wrap">{i.body}</div>
             <div :if={i.parties != []} class="flex flex-wrap gap-1 mt-1">
               <span class="text-xs text-base-content/50">{gettext("Involved:")}</span>
-              <span :for={p <- i.parties} class="badge badge-outline badge-sm gap-1" title={snapshot_title(p.party_snapshot)}>
-                {p.raw_name}<span :if={snapshot_detail(p.party_snapshot)} class="opacity-60">— {snapshot_detail(p.party_snapshot)}</span>
-              </span>
+              <.party_badge :for={p <- i.parties} party={p} />
             </div>
 
             <% files = Map.get(@interaction_files, i.uuid, []) %>
@@ -760,28 +760,4 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     </div>
     """
   end
-
-  # "Intern at Acme" style detail from the frozen snapshot.
-  defp snapshot_detail(snapshot) when is_map(snapshot) do
-    role = snapshot["role_in_company"] || snapshot["job_title"]
-    company = snapshot["company"]
-
-    cond do
-      role && company -> "#{role}, #{company}"
-      role -> role
-      company -> company
-      true -> nil
-    end
-  end
-
-  defp snapshot_detail(_), do: nil
-
-  defp snapshot_title(snapshot) when is_map(snapshot) do
-    case snapshot["captured_at"] do
-      ts when is_binary(ts) -> gettext("Captured %{ts}", ts: ts)
-      _ -> nil
-    end
-  end
-
-  defp snapshot_title(_), do: nil
 end

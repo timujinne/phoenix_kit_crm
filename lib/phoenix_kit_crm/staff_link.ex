@@ -22,6 +22,19 @@ defmodule PhoenixKitCRM.StaffLink do
     _ -> false
   end
 
+  @doc "Path to a staff person's profile page, or nil when staff is unavailable."
+  @spec person_path(binary()) :: String.t() | nil
+  def person_path(staff_person_uuid) when is_binary(staff_person_uuid) do
+    if enabled?() and Code.ensure_loaded?(PhoenixKitStaff.Paths) and
+         function_exported?(PhoenixKitStaff.Paths, :person, 1) do
+      apply(PhoenixKitStaff.Paths, :person, [staff_person_uuid])
+    end
+  rescue
+    _ -> nil
+  end
+
+  def person_path(_), do: nil
+
   @doc """
   Searches staff people by name (case-insensitive) when staff is enabled.
   Returns a list of `%{uuid, name, job_title}` maps. Empty when staff is off.
