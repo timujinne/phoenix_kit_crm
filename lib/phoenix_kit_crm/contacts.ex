@@ -38,6 +38,13 @@ defmodule PhoenixKitCRM.Contacts do
     |> repo().preload(company_memberships: :company, user: [])
   end
 
+  @doc "Contacts for the given uuids (any status) — for comment back-link resolution."
+  @spec list_by_uuids([binary()]) :: [Contact.t()]
+  def list_by_uuids([]), do: []
+
+  def list_by_uuids(uuids) when is_list(uuids),
+    do: from(c in Contact, where: c.uuid in ^uuids) |> repo().all()
+
   @spec count_contacts(keyword()) :: non_neg_integer()
   def count_contacts(opts \\ []) do
     Contact

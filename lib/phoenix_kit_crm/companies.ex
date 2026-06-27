@@ -43,6 +43,13 @@ defmodule PhoenixKitCRM.Companies do
     |> repo().all()
   end
 
+  @doc "Companies for the given uuids (any status) — for comment back-link resolution."
+  @spec list_by_uuids([binary()]) :: [Company.t()]
+  def list_by_uuids([]), do: []
+
+  def list_by_uuids(uuids) when is_list(uuids),
+    do: from(c in Company, where: c.uuid in ^uuids) |> repo().all()
+
   @spec count_companies(keyword()) :: non_neg_integer()
   def count_companies(opts \\ []) do
     Company

@@ -13,6 +13,8 @@ defmodule PhoenixKitCRM do
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Settings
+  alias PhoenixKitCRM.{Companies, Contacts, Paths}
+  alias PhoenixKitCRM.Schemas.{Company, Contact}
 
   @enabled_setting "crm_enabled"
 
@@ -207,5 +209,43 @@ defmodule PhoenixKitCRM do
         global: "PhoenixKitCRMHooks"
       }
     ]
+  end
+
+  @doc """
+  phoenix_kit_comments back-link resolver. Turns commented contact/company uuids
+  into `%{uuid => %{title, path}}` chips for the central Comments admin, so each
+  comment links back to the record it was made on (with the contact/company name
+  as the label).
+
+  Paths are RAW (no URL prefix) — the comments module applies the prefix/locale
+  itself. Registered via the host's config (see hello_world for the pattern):
+
+      config :phoenix_kit, :comment_resource_handlers, %{
+        "crm_contact" => PhoenixKitCRM,
+        "crm_company" => PhoenixKitCRM
+      }
+
+  Dispatched per `resource_type`, so each call's uuids are all one kind; we
+  resolve against both tables and merge, which is harmless for the empty side.
+  """
+  @spec resolve_comment_resources([binary()]) :: %{binary() => map()}
+  def resolve_comment_resources(uuids) when is_list(uuids) do
+    contacts =
+      uuids
+      |> Contacts.list_by_uuids()
+      |> Map.new(fn c ->
+        {c.uuid, %{title: Contact.display_name(c), path: Paths.contact_raw(c.uuid)}}
+      end)
+
+    companies =
+      uuids
+      |> Companies.list_by_uuids()
+      |> Map.new(fn co ->
+        {co.uuid, %{title: Company.display_name(co), path: Paths.company_raw(co.uuid)}}
+      end)
+
+    Map.merge(contacts, companies)
+  rescue
+    _ -> %{}
   end
 end
