@@ -6,7 +6,8 @@ defmodule PhoenixKitCRM.SoftDeleteTest do
 
   describe "trash_changeset/2" do
     test "stashes the current status under trashed_from_status and sets the sentinel" do
-      cs = SoftDelete.trash_changeset(%Contact{status: "active", metadata: %{"x" => 1}}, "trashed")
+      cs =
+        SoftDelete.trash_changeset(%Contact{status: "active", metadata: %{"x" => 1}}, "trashed")
 
       assert cs.changes.status == "trashed"
       assert cs.changes.metadata == %{"x" => 1, "trashed_from_status" => "active"}
