@@ -8,6 +8,7 @@ defmodule PhoenixKitCRM.Companies do
 
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Schemas.{Company, CompanyMembership}
+  alias PhoenixKitCRM.SoftDelete
 
   defp repo, do: RepoHelper.repo()
 
@@ -89,21 +90,15 @@ defmodule PhoenixKitCRM.Companies do
   def trash_company(%Company{status: "trashed"}), do: {:error, :already_trashed}
 
   def trash_company(%Company{} = company) do
-    meta = Map.put(company.metadata || %{}, "trashed_from_status", company.status)
-
     company
-    |> Ecto.Changeset.change(status: Company.soft_delete_status(), metadata: meta)
+    |> SoftDelete.trash_changeset(Company.soft_delete_status())
     |> repo().update()
   end
 
   @spec restore_company(Company.t()) :: {:ok, Company.t()} | {:error, atom() | Ecto.Changeset.t()}
   def restore_company(%Company{status: "trashed"} = company) do
-    prior = Map.get(company.metadata || %{}, "trashed_from_status")
-    status = if prior in Company.statuses(), do: prior, else: "active"
-    meta = Map.delete(company.metadata || %{}, "trashed_from_status")
-
     company
-    |> Ecto.Changeset.change(status: status, metadata: meta)
+    |> SoftDelete.restore_changeset(Company.statuses())
     |> repo().update()
   end
 

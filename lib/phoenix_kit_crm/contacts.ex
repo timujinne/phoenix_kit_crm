@@ -18,6 +18,7 @@ defmodule PhoenixKitCRM.Contacts do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Schemas.{CompanyMembership, Contact}
+  alias PhoenixKitCRM.SoftDelete
 
   defp repo, do: RepoHelper.repo()
 
@@ -106,21 +107,15 @@ defmodule PhoenixKitCRM.Contacts do
   def trash_contact(%Contact{status: "trashed"}), do: {:error, :already_trashed}
 
   def trash_contact(%Contact{} = contact) do
-    meta = Map.put(contact.metadata || %{}, "trashed_from_status", contact.status)
-
     contact
-    |> Ecto.Changeset.change(status: Contact.soft_delete_status(), metadata: meta)
+    |> SoftDelete.trash_changeset(Contact.soft_delete_status())
     |> repo().update()
   end
 
   @spec restore_contact(Contact.t()) :: {:ok, Contact.t()} | {:error, atom() | Ecto.Changeset.t()}
   def restore_contact(%Contact{status: "trashed"} = contact) do
-    prior = Map.get(contact.metadata || %{}, "trashed_from_status")
-    status = if prior in Contact.statuses(), do: prior, else: "active"
-    meta = Map.delete(contact.metadata || %{}, "trashed_from_status")
-
     contact
-    |> Ecto.Changeset.change(status: status, metadata: meta)
+    |> SoftDelete.restore_changeset(Contact.statuses())
     |> repo().update()
   end
 
