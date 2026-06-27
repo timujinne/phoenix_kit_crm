@@ -46,6 +46,9 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
 
   def handle_event("delete", %{"uuid" => uuid}, socket) do
     with %Contact{} = c <- Contacts.get_contact(uuid), {:ok, _} <- Contacts.delete_contact(c) do
+      # Permanent delete cascades the contact's media folder subtree (best-effort).
+      PhoenixKitCRM.Attachments.purge_contact_media(uuid)
+
       Activity.log(
         "crm.contact_deleted",
         Activity.actor_opts(socket) ++ [resource_type: "crm_contact", resource_uuid: uuid]

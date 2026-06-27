@@ -11,6 +11,7 @@ defmodule PhoenixKitCRM.Interactions do
   import Ecto.Query, warn: false
 
   alias PhoenixKit.RepoHelper
+  alias PhoenixKitCRM.Activity
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.PubSub
   alias PhoenixKitCRM.Schemas.{Contact, Interaction, InteractionParty}
@@ -66,17 +67,30 @@ defmodule PhoenixKitCRM.Interactions do
   @spec create_interaction(map(), [map()]) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
   def create_interaction(attrs, party_inputs \\ []) do
-    repo().transaction(fn ->
-      case %Interaction{} |> Interaction.changeset(attrs) |> repo().insert() do
-        {:ok, interaction} ->
-          replace_parties(interaction, party_inputs)
-          repo().preload(interaction, [:parties], force: true)
+    result =
+      repo().transaction(fn ->
+        case %Interaction{} |> Interaction.changeset(attrs) |> repo().insert() do
+          {:ok, interaction} ->
+            replace_parties(interaction, party_inputs)
+            repo().preload(interaction, [:parties], force: true)
 
-        {:error, changeset} ->
-          repo().rollback(changeset)
-      end
-    end)
-    |> broadcast_after(:interaction_created)
+          {:error, changeset} ->
+            repo().rollback(changeset)
+        end
+      end)
+
+    case result do
+      {:ok, interaction} = ok ->
+        # Log the audit entry BEFORE broadcasting, so a subscriber that reloads
+        # its Events feed off the broadcast already sees this row (the activity
+        # log is what the Events tab reads).
+        log_interaction_logged(interaction)
+        PubSub.broadcast_interaction(:interaction_created, interaction)
+        ok
+
+      other ->
+        other
+    end
   end
 
   @spec update_interaction(Interaction.t(), map(), [map()]) ::
@@ -130,13 +144,21 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
-  # Fan a successful create/update out to involved contacts' feeds (after commit).
-  defp broadcast_after({:ok, %Interaction{} = interaction} = ok, event) do
-    PubSub.broadcast_interaction(event, interaction)
-    ok
+  # The contact's Events feed audit entry for a logged interaction. Logged in the
+  # context (not the LiveView) so it's written before the realtime broadcast and
+  # so every create path records it. Best-effort via the Activity wrapper.
+  defp log_interaction_logged(%Interaction{} = interaction) do
+    Activity.log("crm.interaction_logged",
+      actor_uuid: interaction.owner_user_uuid,
+      resource_type: "crm_contact",
+      resource_uuid: interaction.contact_uuid,
+      target_uuid: interaction.uuid,
+      metadata: %{
+        "interaction_type" => interaction.interaction_type,
+        "subject" => interaction.subject
+      }
+    )
   end
-
-  defp broadcast_after(other, _event), do: other
 
   # ── Party reconciliation + snapshot ─────────────────────────────────
 

@@ -9,7 +9,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
 
   require Logger
 
-  alias PhoenixKitCRM.{Activity, Contacts, Interactions, StaffLink}
+  alias PhoenixKitCRM.{Contacts, Interactions, StaffLink}
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
 
   @impl true
@@ -133,14 +133,8 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
       end)
 
     case Interactions.create_interaction(attrs, party_inputs) do
-      {:ok, interaction} ->
-        Activity.log("crm.interaction_logged",
-          actor_uuid: socket.assigns[:current_user_uuid],
-          resource_type: "crm_contact",
-          resource_uuid: socket.assigns.contact.uuid,
-          target_uuid: interaction.uuid
-        )
-
+      {:ok, _interaction} ->
+        # (The audit-log entry + realtime broadcast are emitted by the context.)
         # Reset the composer ONLY on success — every failure path below leaves
         # the typed fields + staged parties untouched.
         {:noreply,

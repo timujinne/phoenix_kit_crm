@@ -74,6 +74,11 @@ defmodule PhoenixKitCRM.MixProject do
       # Dashboard tabs, and the admin layout this module renders into.
       {:phoenix_kit, "~> 1.7"},
 
+      # Hard, compile-time dep for the contact profile's Comments tab
+      # (`use PhoenixKitComments.Embed` + CommentsComponent). Runtime-gated on
+      # the module's admin toggle, so the tab hides when comments is disabled.
+      {:phoenix_kit_comments, "~> 0.2"},
+
       # Per-module i18n — own Gettext backend for sidebar tab labels.
       {:gettext, "~> 1.0"},
 
