@@ -84,10 +84,36 @@ defmodule PhoenixKitCRM do
         gettext_backend: PhoenixKitCRM.Gettext
       ),
       Tab.new!(
+        id: :admin_crm_contacts,
+        label: "Contacts",
+        icon: "hero-user",
+        path: "/admin/crm/contacts",
+        priority: 652,
+        level: :admin,
+        permission: module_key(),
+        match: :prefix,
+        parent: :admin_crm,
+        live_view: {PhoenixKitCRM.Web.ContactsLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
+        id: :admin_crm_companies,
+        label: "Companies",
+        icon: "hero-building-office-2",
+        path: "/admin/crm/companies",
+        priority: 653,
+        level: :admin,
+        permission: module_key(),
+        match: :prefix,
+        parent: :admin_crm,
+        live_view: {PhoenixKitCRM.Web.CompaniesLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
         id: :admin_crm_organizations,
         label: "Organizations",
         path: "/admin/crm/organizations",
-        priority: 652,
+        priority: 654,
         level: :admin,
         permission: module_key(),
         match: :prefix,
@@ -168,4 +194,18 @@ defmodule PhoenixKitCRM do
 
   @impl PhoenixKit.Module
   def css_sources, do: [:phoenix_kit_crm]
+
+  # No `@impl` on purpose — older core releases don't declare the `js_sources/0`
+  # callback, and annotating it would warn (and fail `--warnings-as-errors`).
+  # Core's `:phoenix_kit_js_sources` compiler folds this into the host's module
+  # JS bundle where present. (Mirrors `phoenix_kit_projects`.)
+  def js_sources do
+    [
+      %{
+        app: :phoenix_kit_crm,
+        file: "static/assets/phoenix_kit_crm.js",
+        global: "PhoenixKitCRMHooks"
+      }
+    ]
+  end
 end
