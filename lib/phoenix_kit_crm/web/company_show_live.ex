@@ -10,6 +10,8 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   # Forwards the comment composer's {:leaf_changed, …} into CommentsComponent.
   use PhoenixKitComments.Embed
 
+  require Logger
+
   alias PhoenixKit.Modules.Storage
   alias PhoenixKitCRM.{Activity, Attachments, Companies, Paths}
   alias PhoenixKitCRM.Schemas.{Company, Contact}
@@ -83,7 +85,10 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   def handle_info({:media_selector_closed}, socket),
     do: {:noreply, assign(socket, :show_avatar_picker, false)}
 
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_info(msg, socket) do
+    Logger.debug("[CRM] CompanyShowLive ignoring message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
 
   # Open the logo picker scoped to the company's Images folder.
   @impl true

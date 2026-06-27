@@ -65,6 +65,7 @@ defmodule PhoenixKitCRM.Schemas.Company do
     |> validate_length(:industry, max: 255)
   end
 
+  @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
   @spec soft_delete_status() :: String.t()

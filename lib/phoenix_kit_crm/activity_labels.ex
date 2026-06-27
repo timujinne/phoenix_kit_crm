@@ -11,6 +11,8 @@ defmodule PhoenixKitCRM.ActivityLabels do
 
   use Gettext, backend: PhoenixKitCRM.Gettext
 
+  alias PhoenixKitCRM.Schemas.Interaction
+
   @doc "Returns `{icon_name, label}` for an action string + its metadata."
   @spec describe(String.t(), map()) :: {String.t(), String.t()}
   def describe(action, metadata \\ %{})
@@ -114,8 +116,9 @@ defmodule PhoenixKitCRM.ActivityLabels do
 
   def detail(_action, _metadata), do: nil
 
-  # "note" -> "Note"; humble fallback for the interaction type.
-  defp type_label(t), do: t |> String.replace("_", " ") |> String.capitalize()
+  # Reuse the schema's gettext'd type labels so the Events detail matches the
+  # interaction timeline and stays translatable.
+  defp type_label(t), do: Interaction.type_label(t)
 
   # "crm.interaction_logged" -> "Interaction logged"
   defp humanize(action) do

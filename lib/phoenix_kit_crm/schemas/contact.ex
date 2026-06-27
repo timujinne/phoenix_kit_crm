@@ -106,6 +106,7 @@ defmodule PhoenixKitCRM.Schemas.Contact do
     end
   end
 
+  @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
   @spec soft_delete_status() :: String.t()

@@ -10,6 +10,8 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   # a composing on_mount hook (the current pattern — see PhoenixKitComments.Embed).
   use PhoenixKitComments.Embed
 
+  require Logger
+
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.{Activity, Attachments, Contacts, Paths}
@@ -137,7 +139,10 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   def handle_info({:media_selector_closed}, socket),
     do: {:noreply, assign(socket, :show_avatar_picker, false)}
 
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_info(msg, socket) do
+    Logger.debug("[CRM] ContactShowLive ignoring message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
 
   # Open the avatar picker scoped to the contact's Images folder (so it suggests
   # existing images and uploads land in the Images tab).

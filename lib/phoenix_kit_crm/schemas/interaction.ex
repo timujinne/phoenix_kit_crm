@@ -6,6 +6,7 @@ defmodule PhoenixKitCRM.Schemas.Interaction do
   """
 
   use Ecto.Schema
+  use Gettext, backend: PhoenixKitCRM.Gettext
   import Ecto.Changeset
 
   alias PhoenixKit.Users.Auth.User
@@ -73,12 +74,14 @@ defmodule PhoenixKitCRM.Schemas.Interaction do
     end
   end
 
+  @spec types() :: [String.t()]
   def types, do: @types
 
-  def type_label("call"), do: "Call"
-  def type_label("email"), do: "Email"
-  def type_label("meeting"), do: "Meeting"
-  def type_label("note"), do: "Note"
-  def type_label("other"), do: "Other"
+  @spec type_label(String.t()) :: String.t()
+  def type_label("call"), do: gettext("Call")
+  def type_label("email"), do: gettext("Email")
+  def type_label("meeting"), do: gettext("Meeting")
+  def type_label("note"), do: gettext("Note")
+  def type_label("other"), do: gettext("Other")
   def type_label(other), do: other
 end
