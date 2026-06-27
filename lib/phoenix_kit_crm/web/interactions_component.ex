@@ -9,10 +9,20 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
 
   require Logger
 
-  alias PhoenixKitCRM.{Contacts, Interactions, StaffLink}
+  alias PhoenixKit.Modules.Storage
+  alias PhoenixKitCRM.{Attachments, Contacts, Interactions, StaffLink}
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
+  alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
   @impl true
+  # The composer's file picker (core MediaSelectorModal) notifies results here.
+  def update(%{media_selected: uuids}, socket) when is_list(uuids) do
+    {:ok, socket |> stage_files(uuids) |> assign(:show_file_picker, false)}
+  end
+
+  def update(%{media_selector_closed: true}, socket),
+    do: {:ok, assign(socket, :show_file_picker, false)}
+
   def update(assigns, socket) do
     socket = assign(socket, assigns)
     offset = socket.assigns[:tz_offset] || 0
@@ -20,6 +30,8 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     {:ok,
      socket
      |> assign_new(:staged_parties, fn -> [] end)
+     |> assign_new(:staged_files, fn -> [] end)
+     |> assign_new(:show_file_picker, fn -> false end)
      # Composer fields are controlled (kept in assigns) so re-renders triggered
      # by staging a party don't wipe what the user has typed. `c_occurred_at`
      # is the user's LOCAL wall-clock time (in their profile timezone); it's
@@ -31,11 +43,27 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
      |> assign_new(:c_occurred_at, fn -> local_now_str(offset) end)
      |> assign_new(:save_error, fn -> nil end)
      |> assign(:staff_enabled, StaffLink.enabled?())
+     |> assign(:storage_enabled, storage_enabled?())
      |> load_interactions()}
   end
 
   defp load_interactions(socket) do
-    assign(socket, :interactions, Interactions.list_involving(socket.assigns.contact.uuid))
+    interactions = Interactions.list_involving(socket.assigns.contact.uuid)
+
+    interaction_files =
+      if socket.assigns[:storage_enabled],
+        do: Attachments.list_files_by_interaction(Enum.map(interactions, & &1.uuid)),
+        else: %{}
+
+    socket
+    |> assign(:interactions, interactions)
+    |> assign(:interaction_files, interaction_files)
+  end
+
+  defp storage_enabled? do
+    Storage.enabled?()
+  rescue
+    _ -> false
   end
 
   @impl true
@@ -132,14 +160,17 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
         }
       end)
 
-    case Interactions.create_interaction(attrs, party_inputs) do
+    file_uuids = Enum.map(socket.assigns.staged_files, & &1.uuid)
+
+    case Interactions.create_interaction(attrs, party_inputs, file_uuids) do
       {:ok, _interaction} ->
-        # (The audit-log entry + realtime broadcast are emitted by the context.)
-        # Reset the composer ONLY on success — every failure path below leaves
-        # the typed fields + staged parties untouched.
+        # (The audit-log entry, file attach, + realtime broadcast are emitted by
+        # the context.) Reset the composer ONLY on success — every failure path
+        # below leaves the typed fields + staged parties + files untouched.
         {:noreply,
          socket
          |> assign(:staged_parties, [])
+         |> assign(:staged_files, [])
          |> assign(:c_type, "note")
          |> assign(:c_subject, "")
          |> assign(:c_body, "")
@@ -173,8 +204,34 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     end
   end
 
+  def handle_event("open_file_picker", _params, socket),
+    do: {:noreply, assign(socket, :show_file_picker, true)}
+
+  def handle_event("close_file_picker", _params, socket),
+    do: {:noreply, assign(socket, :show_file_picker, false)}
+
+  def handle_event("remove_staged_file", %{"uuid" => uuid}, socket) do
+    {:noreply,
+     assign(socket, :staged_files, Enum.reject(socket.assigns.staged_files, &(&1.uuid == uuid)))}
+  end
+
   # Ignore any unexpected/forged event rather than crashing the LiveView.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # Add newly-picked/uploaded files to the composer's staged list (deduped). The
+  # files are attached to the interaction's folder when it's saved.
+  defp stage_files(socket, uuids) do
+    current = socket.assigns[:staged_files] || []
+    seen = MapSet.new(current, & &1.uuid)
+
+    added =
+      uuids
+      |> Enum.reject(&MapSet.member?(seen, &1))
+      |> Enum.map(&Attachments.get_file/1)
+      |> Enum.reject(&is_nil/1)
+
+    assign(socket, :staged_files, current ++ added)
+  end
 
   # Best-effort, user-facing message from a failed changeset (interaction or a
   # rolled-back party); details are logged, the input is preserved either way.
@@ -491,6 +548,38 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
               <span class="hidden loading loading-spinner loading-xs hero-user hero-identification hero-pencil hero-plus-mini"></span>
             </div>
 
+          <%!-- Attachments — staged in the composer, attached to the interaction
+                when it's saved (the picker uploads; we hold the uuids). --%>
+          <div :if={@storage_enabled} class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="label-text font-semibold leading-none">{gettext("Attachments")}</span>
+              <button
+                type="button"
+                phx-click="open_file_picker"
+                phx-target={@myself}
+                class="btn btn-xs btn-outline gap-1"
+              >
+                <.icon name="hero-paper-clip" class="w-3.5 h-3.5" /> {gettext("Attach files")}
+              </button>
+            </div>
+            <div :if={@staged_files != []} class="flex flex-wrap gap-2">
+              <span :for={f <- @staged_files} class="badge badge-lg gap-1">
+                <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
+                <span class="max-w-[12rem] truncate">{f.original_file_name || f.file_name}</span>
+                <button
+                  type="button"
+                  phx-click="remove_staged_file"
+                  phx-value-uuid={f.uuid}
+                  phx-target={@myself}
+                  aria-label={gettext("Remove")}
+                  class="ml-1 cursor-pointer"
+                >
+                  <.icon name="hero-x-mark" class="w-4 h-4" />
+                </button>
+              </span>
+            </div>
+          </div>
+
           <div :if={@save_error} class="alert alert-error text-sm py-2" role="alert">
             <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
             <span>{@save_error}</span>
@@ -509,6 +598,22 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
           </div>
         </div>
       </div>
+
+      <%!-- Composer file picker: upload-only, unscoped (files land orphan and
+            are adopted into the interaction's folder on save). Notifies here. --%>
+      <.live_component
+        :if={@storage_enabled}
+        module={MediaSelectorModal}
+        id={"#{@id}-file-selector"}
+        show={@show_file_picker}
+        mode={:multiple}
+        file_type_filter={:all}
+        browse={false}
+        selected_uuids={[]}
+        scope_folder_id={nil}
+        phoenix_kit_current_user={@phoenix_kit_current_user}
+        notify={{__MODULE__, @id}}
+      />
 
       <%!-- Timeline --%>
       <div :if={@interactions == []} class="text-center text-base-content/50 py-8">
@@ -541,6 +646,21 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
               <span :for={p <- i.parties} class="badge badge-outline badge-sm gap-1" title={snapshot_title(p.party_snapshot)}>
                 {p.raw_name}<span :if={snapshot_detail(p.party_snapshot)} class="opacity-60">— {snapshot_detail(p.party_snapshot)}</span>
               </span>
+            </div>
+
+            <% files = Map.get(@interaction_files, i.uuid, []) %>
+            <div :if={files != []} class="flex flex-wrap gap-2 mt-1">
+              <a
+                :for={f <- files}
+                href={Attachments.download_url(f)}
+                target="_blank"
+                rel="noopener"
+                class="inline-flex items-center gap-1 badge badge-ghost badge-sm hover:badge-outline"
+                title={f.original_file_name || f.file_name}
+              >
+                <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
+                <span class="max-w-[10rem] truncate">{f.original_file_name || f.file_name}</span>
+              </a>
             </div>
           </div>
         </li>

@@ -12,6 +12,7 @@ defmodule PhoenixKitCRM.Interactions do
 
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Activity
+  alias PhoenixKitCRM.Attachments
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.PubSub
   alias PhoenixKitCRM.Schemas.{Contact, Interaction, InteractionParty}
@@ -45,6 +46,19 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
+  @doc "UUIDs of the interactions a contact is the subject of (for the Files rollup)."
+  @spec interaction_uuids_for_contact(binary()) :: [binary()]
+  def interaction_uuids_for_contact(contact_uuid) do
+    case Ecto.UUID.cast(contact_uuid) do
+      {:ok, _} ->
+        from(i in Interaction, where: i.contact_uuid == ^contact_uuid, select: i.uuid)
+        |> repo().all()
+
+      :error ->
+        []
+    end
+  end
+
   @spec get_interaction(UUIDv7.t() | String.t() | nil) :: Interaction.t() | nil
   def get_interaction(uuid) do
     with {:ok, _} <- Ecto.UUID.cast(uuid),
@@ -64,9 +78,9 @@ defmodule PhoenixKitCRM.Interactions do
   list of maps with `:raw_name` (required) and an optional resolved reference
   (`:contact_uuid` OR `:staff_person_uuid`). The snapshot is captured here.
   """
-  @spec create_interaction(map(), [map()]) ::
+  @spec create_interaction(map(), [map()], [binary()]) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
-  def create_interaction(attrs, party_inputs \\ []) do
+  def create_interaction(attrs, party_inputs \\ [], file_uuids \\ []) do
     result =
       repo().transaction(fn ->
         case %Interaction{} |> Interaction.changeset(attrs) |> repo().insert() do
@@ -81,15 +95,26 @@ defmodule PhoenixKitCRM.Interactions do
 
     case result do
       {:ok, interaction} = ok ->
-        # Log the audit entry BEFORE broadcasting, so a subscriber that reloads
-        # its Events feed off the broadcast already sees this row (the activity
-        # log is what the Events tab reads).
+        # Attach staged files + log the audit entry BEFORE broadcasting, so a
+        # subscriber reloading off the broadcast already sees both the attached
+        # files (rendered from the folder) and the Events-tab activity row.
+        attach_files(interaction, file_uuids, attrs["owner_user_uuid"])
         log_interaction_logged(interaction)
         PubSub.broadcast_interaction(:interaction_created, interaction)
         ok
 
       other ->
         other
+    end
+  end
+
+  # Best-effort: move the composer's staged files into the interaction's folder.
+  defp attach_files(_interaction, [], _actor), do: :ok
+
+  defp attach_files(%Interaction{} = interaction, file_uuids, actor_uuid) do
+    case Attachments.ensure_interaction_folder(interaction.uuid, actor_uuid) do
+      {:ok, folder_uuid} -> Enum.each(file_uuids, &Attachments.attach(&1, folder_uuid))
+      _ -> :ok
     end
   end
 
@@ -136,6 +161,8 @@ defmodule PhoenixKitCRM.Interactions do
 
     case repo().delete(interaction) do
       {:ok, _deleted} = ok ->
+        # Cascade the interaction's attachment folder (best-effort).
+        Attachments.purge_interaction_media(interaction.uuid)
         PubSub.broadcast_interaction(:interaction_deleted, interaction)
         ok
 

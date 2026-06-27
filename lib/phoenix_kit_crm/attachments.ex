@@ -29,6 +29,7 @@ defmodule PhoenixKitCRM.Attachments do
   alias PhoenixKitCRM.Schemas.Contact
 
   @images_folder_name "Images"
+  @interaction_prefix "crm-interaction-"
   @avatar_key "avatar_uuid"
   # Inline grid is unpaginated; cap the query so a pathological folder can't
   # freeze the tab. The picker uploads ≤20/submit, so this is generous.
@@ -272,8 +273,10 @@ defmodule PhoenixKitCRM.Attachments do
   delete (soft-trash keeps the files).
   """
   @spec purge_contact_media(binary()) :: :ok
-  def purge_contact_media(contact_uuid) do
-    case get_folder(root_folder_name(contact_uuid), nil) do
+  def purge_contact_media(contact_uuid), do: purge_folder(root_folder_name(contact_uuid))
+
+  defp purge_folder(name) do
+    case get_folder(name, nil) do
       %Folder{} = folder ->
         Storage.delete_folder_completely(folder)
         :ok
@@ -283,8 +286,91 @@ defmodule PhoenixKitCRM.Attachments do
     end
   rescue
     error ->
-      Logger.warning("[CRM] purge_contact_media #{contact_uuid} failed: #{inspect(error)}")
+      Logger.warning("[CRM] purge folder #{name} failed: #{inspect(error)}")
       :ok
+  end
+
+  # ── Interaction-scoped media (compose-time attachments) ────────────
+  #
+  # Each interaction owns a flat root folder `crm-interaction-<uuid>`. Files are
+  # staged in the composer (uploaded orphan / picked) and attached here when the
+  # interaction is saved. Same find-or-create / list / purge plumbing as contacts.
+
+  @doc "Deterministic root folder name for an interaction's attachments."
+  @spec interaction_folder_name(binary()) :: binary()
+  def interaction_folder_name(interaction_uuid), do: @interaction_prefix <> interaction_uuid
+
+  @doc "Resolve an interaction's attachment folder uuid (no create), or nil."
+  @spec interaction_folder_uuid(binary()) :: binary() | nil
+  def interaction_folder_uuid(interaction_uuid),
+    do: uuid_of(get_folder(interaction_folder_name(interaction_uuid), nil))
+
+  @doc "Find-or-create an interaction's attachment folder."
+  @spec ensure_interaction_folder(binary(), binary() | nil) ::
+          {:ok, binary()} | {:error, term()}
+  def ensure_interaction_folder(interaction_uuid, actor_uuid),
+    do: find_or_create(interaction_folder_name(interaction_uuid), nil, actor_uuid)
+
+  @doc "Files attached to an interaction (newest first, excluding trashed)."
+  @spec list_interaction_files(binary()) :: [File.t()]
+  def list_interaction_files(interaction_uuid),
+    do: list_files(interaction_folder_uuid(interaction_uuid), only: :all)
+
+  @doc """
+  Files for many interactions at once → `%{interaction_uuid => [File.t()]}` (only
+  interactions that have files appear). Two queries total (folders, then files);
+  used to render the timeline without an N+1. Compose-time uploads land home in
+  the interaction folder, so home-folder files are sufficient (no FolderLinks).
+  """
+  @spec list_files_by_interaction([binary()]) :: %{binary() => [File.t()]}
+  def list_files_by_interaction([]), do: %{}
+
+  def list_files_by_interaction(interaction_uuids) do
+    name_to_iuuid = Map.new(interaction_uuids, &{interaction_folder_name(&1), &1})
+    names = Map.keys(name_to_iuuid)
+
+    folder_to_iuuid =
+      from(f in Folder,
+        where: f.name in ^names and is_nil(f.parent_uuid),
+        select: {f.uuid, f.name}
+      )
+      |> repo().all()
+      |> Map.new(fn {fuuid, name} -> {fuuid, Map.get(name_to_iuuid, name)} end)
+
+    fuuids = Map.keys(folder_to_iuuid)
+
+    files =
+      if fuuids == [] do
+        []
+      else
+        from(f in File,
+          where: f.folder_uuid in ^fuuids and f.status != "trashed",
+          order_by: [desc: f.inserted_at]
+        )
+        |> repo().all()
+      end
+
+    Enum.group_by(files, fn f -> Map.get(folder_to_iuuid, f.folder_uuid) end)
+  rescue
+    error ->
+      Logger.warning("[CRM] list_files_by_interaction failed: #{inspect(error)}")
+      %{}
+  end
+
+  @doc "Purge an interaction's attachment folder subtree (best-effort)."
+  @spec purge_interaction_media(binary()) :: :ok
+  def purge_interaction_media(interaction_uuid),
+    do: purge_folder(interaction_folder_name(interaction_uuid))
+
+  @doc "Fetch a `File` struct by uuid (nil-safe), for the composer's staged list."
+  @spec get_file(binary()) :: File.t() | nil
+  def get_file(uuid) do
+    case Storage.get_file(uuid) do
+      %File{} = file -> file
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   # ── Template helpers ───────────────────────────────────────────────

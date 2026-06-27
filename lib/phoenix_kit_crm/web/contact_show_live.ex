@@ -217,6 +217,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
           contact={@contact}
           current_user_uuid={current_user_uuid(assigns)}
           current_user_name={current_user_name(assigns)}
+          phoenix_kit_current_user={@phoenix_kit_current_user}
           tz_offset={@tz_offset}
         />
       </div>

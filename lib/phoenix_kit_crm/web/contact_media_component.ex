@@ -20,7 +20,7 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
   require Logger
 
   alias PhoenixKit.Modules.Storage
-  alias PhoenixKitCRM.{Activity, Attachments}
+  alias PhoenixKitCRM.{Activity, Attachments, Interactions}
   alias PhoenixKitCRM.Schemas.Contact
   alias PhoenixKitWeb.Live.Components.MediaSelectorModal
 
@@ -43,8 +43,21 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
      |> assign_new(:show_picker, fn -> false end)
      |> assign(:folder_uuid, Attachments.folder_uuid(socket.assigns.contact.uuid, kind))
      |> assign(:avatar_uuid, Attachments.avatar_uuid(socket.assigns.contact))
+     |> assign(:rollup_files, rollup_files(socket.assigns.contact.uuid, kind))
      |> reload()}
   end
+
+  # Files tab also rolls up files attached to the contact's interactions
+  # (read-only here — those are managed on the interaction). Other tabs: none.
+  defp rollup_files(contact_uuid, :files) do
+    contact_uuid
+    |> Interactions.interaction_uuids_for_contact()
+    |> Attachments.list_files_by_interaction()
+    |> Map.values()
+    |> List.flatten()
+  end
+
+  defp rollup_files(_contact_uuid, _kind), do: []
 
   # ── Events ─────────────────────────────────────────────────────────
 
@@ -321,6 +334,33 @@ defmodule PhoenixKitCRM.Web.ContactMediaComponent do
               >
                 <.icon name="hero-x-mark" class="w-4 h-4" />
               </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <%!-- Roll-up: files attached to this contact's interactions (read-only;
+           managed on the interaction itself). --%>
+      <div :if={@kind == :files and @rollup_files != []} class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title text-base">
+            <.icon name="hero-paper-clip" class="w-4 h-4" />
+            {gettext("Attached to interactions")} ({length(@rollup_files)})
+          </h3>
+          <ul class="flex flex-col divide-y divide-base-200">
+            <li :for={f <- @rollup_files} class="flex items-center gap-3 py-2">
+              <.icon name={Attachments.file_icon(f)} class="w-5 h-5 text-base-content/60 shrink-0" />
+              <a
+                href={Attachments.download_url(f)}
+                target="_blank"
+                rel="noopener"
+                class="link link-hover text-sm flex-1 min-w-0 truncate"
+              >
+                {f.original_file_name || f.file_name}
+              </a>
+              <span class="text-xs text-base-content/50 shrink-0">
+                {Attachments.format_file_size(f.size)}
+              </span>
             </li>
           </ul>
         </div>
