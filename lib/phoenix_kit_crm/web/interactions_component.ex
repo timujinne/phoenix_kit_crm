@@ -67,7 +67,13 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     q = String.trim(q)
 
     {results, has_more} =
-      search_parties(q, socket.assigns.staff_enabled, parse_limit(params["limit"]))
+      search_parties(
+        q,
+        socket.assigns.staff_enabled,
+        parse_limit(params["limit"]),
+        # The subject contact is already implied — keep them out of the picker.
+        [socket.assigns.contact.uuid]
+      )
 
     {:noreply,
      push_event(socket, "crm_party_results", %{q: q, results: results, has_more: has_more})}
@@ -389,10 +395,10 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   end
 
   # Fetch one extra per source so the hook knows whether to offer "Load more".
-  defp search_parties(query, staff_enabled?, limit) do
+  defp search_parties(query, staff_enabled?, limit, exclude_uuids) do
     contacts =
       query
-      |> Contacts.search_contacts(limit + 1)
+      |> Contacts.search_contacts(limit + 1, exclude_uuids)
       |> Enum.map(fn c ->
         %{kind: "contact", uuid: c.uuid, label: Contact.display_name(c), sublabel: c.email || ""}
       end)

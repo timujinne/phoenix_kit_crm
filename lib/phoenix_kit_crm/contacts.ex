@@ -123,9 +123,13 @@ defmodule PhoenixKitCRM.Contacts do
   @spec delete_contact(Contact.t()) :: {:ok, Contact.t()} | {:error, Ecto.Changeset.t()}
   def delete_contact(%Contact{} = contact), do: repo().delete(contact)
 
-  @doc "Searches contacts by name/email (case-insensitive) for the parties picker. Excludes trashed."
-  @spec search_contacts(String.t(), pos_integer()) :: [Contact.t()]
-  def search_contacts(query, limit \\ 8) when is_binary(query) do
+  @doc """
+  Searches contacts by name/email (case-insensitive) for the parties picker.
+  Excludes trashed and any uuids in `exclude_uuids` (e.g. the contact whose page
+  the interaction is being logged on — they're already the subject).
+  """
+  @spec search_contacts(String.t(), pos_integer(), [binary()]) :: [Contact.t()]
+  def search_contacts(query, limit \\ 8, exclude_uuids \\ []) when is_binary(query) do
     q = String.trim(query)
 
     if q == "" do
@@ -136,11 +140,15 @@ defmodule PhoenixKitCRM.Contacts do
       Contact
       |> where([c], c.status != "trashed")
       |> where([c], ilike(c.name, ^like) or ilike(c.email, ^like))
+      |> maybe_exclude_uuids(exclude_uuids)
       |> order_by([c], asc: c.name)
       |> limit(^limit)
       |> repo().all()
     end
   end
+
+  defp maybe_exclude_uuids(query, []), do: query
+  defp maybe_exclude_uuids(query, uuids), do: where(query, [c], c.uuid not in ^uuids)
 
   # ── Company membership (v1: a single primary company per contact) ───
 
