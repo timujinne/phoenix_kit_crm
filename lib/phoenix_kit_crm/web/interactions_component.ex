@@ -460,6 +460,38 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
             />
           </.form>
 
+          <%!-- Attachments — staged in the composer, attached to the interaction
+                when it's saved (the picker uploads; we hold the uuids). --%>
+          <div :if={@storage_enabled} class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="label-text font-semibold leading-none">{gettext("Attachments")}</span>
+              <button
+                type="button"
+                phx-click="open_file_picker"
+                phx-target={@myself}
+                class="btn btn-xs btn-outline gap-1"
+              >
+                <.icon name="hero-paper-clip" class="w-3.5 h-3.5" /> {gettext("Attach files")}
+              </button>
+            </div>
+            <div :if={@staged_files != []} class="flex flex-wrap gap-2">
+              <span :for={f <- @staged_files} class="badge badge-lg gap-1">
+                <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
+                <span class="max-w-[12rem] truncate">{f.original_file_name || f.file_name}</span>
+                <button
+                  type="button"
+                  phx-click="remove_staged_file"
+                  phx-value-uuid={f.uuid}
+                  phx-target={@myself}
+                  aria-label={gettext("Remove")}
+                  class="ml-1 cursor-pointer"
+                >
+                  <.icon name="hero-x-mark" class="w-4 h-4" />
+                </button>
+              </span>
+            </div>
+          </div>
+
           <%!-- Involved parties — outside the <.form> so Enter in the search box
                 never submits the composer (it only stages parties). --%>
           <div class="flex flex-col gap-2">
@@ -547,38 +579,6 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
               <%!-- Keep the JS-rendered dropdown's classes in the CSS bundle. --%>
               <span class="hidden loading loading-spinner loading-xs hero-user hero-identification hero-pencil hero-plus-mini"></span>
             </div>
-
-          <%!-- Attachments — staged in the composer, attached to the interaction
-                when it's saved (the picker uploads; we hold the uuids). --%>
-          <div :if={@storage_enabled} class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <span class="label-text font-semibold leading-none">{gettext("Attachments")}</span>
-              <button
-                type="button"
-                phx-click="open_file_picker"
-                phx-target={@myself}
-                class="btn btn-xs btn-outline gap-1"
-              >
-                <.icon name="hero-paper-clip" class="w-3.5 h-3.5" /> {gettext("Attach files")}
-              </button>
-            </div>
-            <div :if={@staged_files != []} class="flex flex-wrap gap-2">
-              <span :for={f <- @staged_files} class="badge badge-lg gap-1">
-                <.icon name={Attachments.file_icon(f)} class="w-3.5 h-3.5 shrink-0" />
-                <span class="max-w-[12rem] truncate">{f.original_file_name || f.file_name}</span>
-                <button
-                  type="button"
-                  phx-click="remove_staged_file"
-                  phx-value-uuid={f.uuid}
-                  phx-target={@myself}
-                  aria-label={gettext("Remove")}
-                  class="ml-1 cursor-pointer"
-                >
-                  <.icon name="hero-x-mark" class="w-4 h-4" />
-                </button>
-              </span>
-            </div>
-          </div>
 
           <div :if={@save_error} class="alert alert-error text-sm py-2" role="alert">
             <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
