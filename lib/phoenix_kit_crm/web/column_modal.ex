@@ -153,7 +153,9 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
             </div>
 
             <div class="flex justify-end gap-2 mt-2">
-              <button type="submit" class="btn btn-primary">{gettext("Apply")}</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Applying…")}>
+                {gettext("Apply")}
+              </button>
               <button type="button" class="btn btn-outline" phx-click="reset_to_defaults">
                 {gettext("Defaults")}
               </button>

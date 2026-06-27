@@ -166,7 +166,10 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     end
   rescue
     e ->
-      Logger.error("[CRM] contact save crashed: " <> Exception.format(:error, e, __STACKTRACE__))
+      Logger.error(
+        "[CRM] contact save crashed (contact_uuid=#{inspect(socket.assigns.contact.uuid)}): " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
 
       changeset =
         socket.assigns.contact
@@ -337,7 +340,11 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     """
   end
 
-  defp status_options, do: Enum.map(Contact.statuses(), fn s -> {String.capitalize(s), s} end)
+  defp status_options, do: Enum.map(Contact.statuses(), &{status_label(&1), &1})
+
+  defp status_label("active"), do: gettext("Active")
+  defp status_label("inactive"), do: gettext("Inactive")
+  defp status_label(s), do: s
   defp blank?(v), do: is_nil(v) or (is_binary(v) and String.trim(v) == "")
 
   defp blank_to_nil(v) when is_binary(v), do: if(String.trim(v) == "", do: nil, else: v)

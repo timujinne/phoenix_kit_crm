@@ -55,7 +55,10 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
     save(socket, socket.assigns.live_action, params)
   rescue
     e ->
-      Logger.error("[CRM] company save crashed: " <> Exception.format(:error, e, __STACKTRACE__))
+      Logger.error(
+        "[CRM] company save crashed (company_uuid=#{inspect(socket.assigns.company.uuid)}): " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
 
       # Rebuild @form from the submitted params so the rerender shows what the
       # user typed (not stale values from the last phx-change).
@@ -151,9 +154,11 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
     """
   end
 
-  defp status_options do
-    Enum.map(Company.statuses(), fn s -> {String.capitalize(s), s} end)
-  end
+  defp status_options, do: Enum.map(Company.statuses(), &{status_label(&1), &1})
+
+  defp status_label("active"), do: gettext("Active")
+  defp status_label("inactive"), do: gettext("Inactive")
+  defp status_label(s), do: s
 
   defp safe_map(p) when is_map(p), do: p
   defp safe_map(_), do: %{}

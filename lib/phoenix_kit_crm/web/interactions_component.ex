@@ -184,7 +184,8 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   rescue
     e ->
       Logger.error(
-        "[CRM] save_interaction crashed: " <> Exception.format(:error, e, __STACKTRACE__)
+        "[CRM] save_interaction crashed (contact_uuid=#{inspect(socket.assigns.contact.uuid)}): " <>
+          Exception.format(:error, e, __STACKTRACE__)
       )
 
       {:noreply, assign(socket, :save_error, default_save_error())}
@@ -729,6 +730,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
                 phx-click="delete_interaction"
                 phx-value-uuid={i.uuid}
                 phx-target={@myself}
+                phx-disable-with={gettext("Deleting…")}
                 data-confirm={gettext("Delete this interaction?")}
                 class="btn btn-ghost btn-xs text-error"
               >
