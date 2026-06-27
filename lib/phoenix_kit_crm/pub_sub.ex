@@ -42,10 +42,23 @@ defmodule PhoenixKitCRM.PubSub do
   """
   @spec broadcast_interaction(atom(), Interaction.t()) :: :ok
   def broadcast_interaction(event, %Interaction{} = interaction) do
-    msg = {:crm, event, %{interaction_uuid: interaction.uuid}}
+    broadcast_to_contacts(event, interaction.uuid, involved_contact_uuids(interaction))
+  end
 
-    interaction
-    |> involved_contact_uuids()
+  @doc """
+  Broadcasts an interaction change to an EXPLICIT set of contact feed topics.
+
+  Used by updates, which must reach the union of the old and new involved
+  contacts so a contact dropped by an edit still gets a refresh to remove the
+  entry. Best-effort (rescued).
+  """
+  @spec broadcast_to_contacts(atom(), binary(), [binary()]) :: :ok
+  def broadcast_to_contacts(event, interaction_uuid, contact_uuids) do
+    msg = {:crm, event, %{interaction_uuid: interaction_uuid}}
+
+    contact_uuids
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
     |> Enum.each(&Manager.broadcast(topic_contact_interactions(&1), msg))
 
     :ok
@@ -53,9 +66,12 @@ defmodule PhoenixKitCRM.PubSub do
     _ -> :ok
   end
 
-  # Subject contact + any resolved party contacts (deduped, nils dropped).
-  # Tolerates parties not being preloaded.
-  defp involved_contact_uuids(%Interaction{contact_uuid: subject, parties: parties}) do
+  @doc """
+  Subject contact + any resolved party contacts (deduped, nils dropped).
+  Tolerates parties not being preloaded (treats them as none).
+  """
+  @spec involved_contact_uuids(Interaction.t()) :: [binary()]
+  def involved_contact_uuids(%Interaction{contact_uuid: subject, parties: parties}) do
     party_uuids =
       case parties do
         list when is_list(list) -> Enum.map(list, & &1.contact_uuid)

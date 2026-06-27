@@ -82,24 +82,44 @@ defmodule PhoenixKitCRM.Interactions do
   @spec update_interaction(Interaction.t(), map(), [map()]) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
   def update_interaction(%Interaction{} = interaction, attrs, party_inputs \\ []) do
-    repo().transaction(fn ->
-      case interaction |> Interaction.changeset(attrs) |> repo().update() do
-        {:ok, updated} ->
-          replace_parties(updated, party_inputs)
-          repo().preload(updated, [:parties], force: true)
+    # Capture the OLD involved contacts before we replace parties / change the
+    # subject, so anyone dropped by this edit still gets a refresh to remove it.
+    old_uuids = PubSub.involved_contact_uuids(repo().preload(interaction, :parties))
 
-        {:error, changeset} ->
-          repo().rollback(changeset)
-      end
-    end)
-    |> broadcast_after(:interaction_updated)
+    result =
+      repo().transaction(fn ->
+        case interaction |> Interaction.changeset(attrs) |> repo().update() do
+          {:ok, updated} ->
+            replace_parties(updated, party_inputs)
+            repo().preload(updated, [:parties], force: true)
+
+          {:error, changeset} ->
+            repo().rollback(changeset)
+        end
+      end)
+
+    case result do
+      {:ok, updated} = ok ->
+        PubSub.broadcast_to_contacts(
+          :interaction_updated,
+          updated.uuid,
+          old_uuids ++ PubSub.involved_contact_uuids(updated)
+        )
+
+        ok
+
+      other ->
+        other
+    end
   end
 
   @spec delete_interaction(Interaction.t()) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
   def delete_interaction(%Interaction{} = interaction) do
-    # Broadcast with the passed-in struct (parties preloaded by the caller) so
+    # Force parties loaded (works for any caller, not just the component path) so
     # every involved contact's feed is reached even though the row is now gone.
+    interaction = repo().preload(interaction, :parties)
+
     case repo().delete(interaction) do
       {:ok, _deleted} = ok ->
         PubSub.broadcast_interaction(:interaction_deleted, interaction)

@@ -43,9 +43,19 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   # guard avoids a duplicate subscription; navigating to a different contact is a
   # fresh LiveView, which cleans up the old subscription on its own.
   defp maybe_subscribe(socket, contact_uuid) do
-    if connected?(socket) and socket.assigns[:subscribed_uuid] != contact_uuid do
-      CRMPubSub.subscribe(CRMPubSub.topic_contact_interactions(contact_uuid))
-      assign(socket, :subscribed_uuid, contact_uuid)
+    current = socket.assigns[:subscribed_uuid]
+
+    if connected?(socket) and current != contact_uuid do
+      # Drop a prior subscription if this process ever switches contact in place
+      # (defensive — navigating today is a fresh LiveView, which cleans up its
+      # own subscriptions). Only record the uuid once the subscribe succeeds, so
+      # a transient failure is retried on the next handle_params.
+      if current, do: CRMPubSub.unsubscribe(CRMPubSub.topic_contact_interactions(current))
+
+      case CRMPubSub.subscribe(CRMPubSub.topic_contact_interactions(contact_uuid)) do
+        :ok -> assign(socket, :subscribed_uuid, contact_uuid)
+        _ -> socket
+      end
     else
       socket
     end
