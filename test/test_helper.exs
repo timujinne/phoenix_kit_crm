@@ -93,6 +93,11 @@ Application.put_env(:phoenix_kit_crm, :test_repo_available, repo_available)
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
+# Force PhoenixKit's URL prefix to "/" so Paths.*/Routes.path produce URLs the
+# test router can match. Admin paths always get the default locale ("en") prefix,
+# so the test router scope is `/en/admin/crm`.
+:persistent_term.put({PhoenixKit.Config, :url_prefix}, "/")
+
 i18n_api_available =
   Code.ensure_loaded?(PhoenixKit.Dashboard.Tab) and
     function_exported?(PhoenixKit.Dashboard.Tab, :localized_label, 1)
@@ -113,5 +118,12 @@ exclude =
     if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
   ]
   |> Enum.reject(&is_nil/1)
+
+# Start the test Endpoint so Phoenix.LiveViewTest can drive the CRM LiveViews via
+# `live/2`. Runs with `server: false` (no port). Only when the test DB is up,
+# since the LiveView tests are tagged :integration.
+if repo_available do
+  {:ok, _} = PhoenixKitCRM.Test.Endpoint.start_link()
+end
 
 ExUnit.start(exclude: exclude)

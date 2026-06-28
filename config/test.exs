@@ -14,4 +14,16 @@ config :phoenix_kit_crm, PhoenixKitCRM.Test.Repo,
 
 config :phoenix_kit, repo: PhoenixKitCRM.Test.Repo
 
+# Test Endpoint for the LiveView suite. phoenix_kit_crm has no endpoint of its
+# own in production — the host app provides one — so this exists only for
+# Phoenix.LiveViewTest.
+config :phoenix_kit_crm, PhoenixKitCRM.Test.Endpoint,
+  secret_key_base: String.duplicate("t", 64),
+  live_view: [signing_salt: "crm-test-salt"],
+  server: false,
+  url: [host: "localhost"],
+  render_errors: [formats: [html: PhoenixKitCRM.Test.Layouts]]
+
+config :phoenix, :json_library, Jason
+
 config :logger, level: :warning
