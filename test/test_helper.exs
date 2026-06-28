@@ -67,6 +67,18 @@ repo_available =
       # every integration test fails on its first INSERT.
       PhoenixKit.Migration.ensure_current(TestRepo, log: false)
 
+      # Record whether the resolved core actually shipped the CRM tables (its V138
+      # migration). Without PHOENIX_KIT_PATH the suite resolves the *published*
+      # core, which doesn't have them yet — so the integration + LiveView tests get
+      # excluded (with a hint) instead of failing on a missing relation.
+      %{rows: [[crm_tables?]]} =
+        TestRepo.query!(
+          "SELECT EXISTS (SELECT 1 FROM information_schema.tables " <>
+            "WHERE table_name = 'phoenix_kit_crm_contacts')"
+        )
+
+      Application.put_env(:phoenix_kit_crm, :crm_tables_present, crm_tables?)
+
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
       true
     rescue
@@ -89,6 +101,21 @@ repo_available =
   end
 
 Application.put_env(:phoenix_kit_crm, :test_repo_available, repo_available)
+
+# The integration + LiveView tests need a core that has the CRM tables (V138).
+# When the DB is up but the resolved core lacks them (the published core, i.e. no
+# PHOENIX_KIT_PATH), exclude those tests with a clear hint instead of failing on a
+# missing relation.
+crm_tables_present =
+  repo_available and Application.get_env(:phoenix_kit_crm, :crm_tables_present, false)
+
+if repo_available and not crm_tables_present do
+  IO.puts("""
+  \n  Resolved core has no CRM tables (its V138 migration isn't applied) —
+     integration + LiveView tests excluded. Run against local core:
+       PHOENIX_KIT_PATH=../phoenix_kit mix test
+  """)
+end
 
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
@@ -114,15 +141,15 @@ end
 
 exclude =
   [
-    if(!repo_available, do: :integration),
+    if(!repo_available or !crm_tables_present, do: :integration),
     if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
   ]
   |> Enum.reject(&is_nil/1)
 
 # Start the test Endpoint so Phoenix.LiveViewTest can drive the CRM LiveViews via
-# `live/2`. Runs with `server: false` (no port). Only when the test DB is up,
-# since the LiveView tests are tagged :integration.
-if repo_available do
+# `live/2`. Runs with `server: false` (no port). Only when the LiveView tests will
+# actually run (DB up + CRM tables present), since they're tagged :integration.
+if repo_available and crm_tables_present do
   {:ok, _} = PhoenixKitCRM.Test.Endpoint.start_link()
 end
 
