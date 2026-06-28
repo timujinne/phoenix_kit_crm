@@ -487,15 +487,44 @@ defmodule PhoenixKitCRM.Attachments do
 
   @doc """
   Points the record's avatar at `file_uuid` (server-owned metadata write).
-  Refuses a trashed record (`{:error, :record_trashed}`); clearing is unguarded.
-  """
-  @spec set_avatar(struct(), binary()) :: {:ok, struct()} | {:error, term()}
-  def set_avatar(%{status: "trashed"}, file_uuid) when is_binary(file_uuid) and file_uuid != "",
-    do: {:error, :record_trashed}
 
-  def set_avatar(%{metadata: _} = record, file_uuid)
+  Authorizes the pointer: `file_uuid` must be an image that actually lives in (or
+  is linked into) *this* record's `Images` folder — a forged event can't point
+  the avatar at an arbitrary file elsewhere in storage. Refuses a trashed record
+  (`{:error, :record_trashed}`) and a non-candidate file
+  (`{:error, :not_record_image}`); clearing is unguarded.
+  """
+  @spec set_avatar(resource(), struct(), binary()) :: {:ok, struct()} | {:error, term()}
+  def set_avatar(_resource, %{status: "trashed"}, file_uuid)
       when is_binary(file_uuid) and file_uuid != "",
-      do: put_metadata(record, @avatar_key, file_uuid)
+      do: {:error, :record_trashed}
+
+  def set_avatar(resource, %{metadata: _, uuid: record_uuid} = record, file_uuid)
+      when resource in [:contact, :company] and is_binary(file_uuid) and file_uuid != "" do
+    if avatar_candidate?(resource, record_uuid, file_uuid) do
+      put_metadata(record, @avatar_key, file_uuid)
+    else
+      {:error, :not_record_image}
+    end
+  end
+
+  @doc """
+  Whether `file_uuid` is one of the record's own `Images`-folder image files
+  (home or linked, excluding trashed) — the authorization basis for `set_avatar/3`.
+  """
+  @spec avatar_candidate?(resource(), binary(), binary()) :: boolean()
+  def avatar_candidate?(resource, record_uuid, file_uuid)
+      when resource in [:contact, :company] and is_binary(file_uuid) and file_uuid != "" do
+    case folder_uuid(resource, record_uuid, :images) do
+      nil ->
+        false
+
+      images_folder ->
+        Enum.any?(list_files(images_folder, only: :images), &(&1.uuid == file_uuid))
+    end
+  end
+
+  def avatar_candidate?(_resource, _record_uuid, _file_uuid), do: false
 
   @doc "Clears the record's avatar pointer."
   @spec clear_avatar(struct()) :: {:ok, struct()} | {:error, term()}

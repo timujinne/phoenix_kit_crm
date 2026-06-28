@@ -18,20 +18,28 @@ defmodule PhoenixKitCRM.Web.CompanyInteractionsComponent do
 
   @impl true
   def update(assigns, socket) do
-    socket = assign(socket, assigns)
-    contact_uuids = member_contact_uuids(socket.assigns.company.uuid)
-    interactions = Interactions.list_for_contacts(contact_uuids)
+    socket = assign_new(assign(socket, assigns), :tz_offset, fn -> 0 end)
+    company_uuid = socket.assigns.company.uuid
 
-    interaction_files =
-      if storage_enabled?(),
-        do: Attachments.list_files_by_interaction(Enum.map(interactions, & &1.uuid)),
-        else: %{}
+    # Read-only rollup with no live refresh — only re-query when the company
+    # changes, so an unrelated host re-render (tab switch, flash) doesn't replay
+    # the ~5-7 queries.
+    if socket.assigns[:loaded_company_uuid] == company_uuid do
+      {:ok, socket}
+    else
+      interactions = Interactions.list_for_contacts(member_contact_uuids(company_uuid))
 
-    {:ok,
-     socket
-     |> assign_new(:tz_offset, fn -> 0 end)
-     |> assign(:interactions, interactions)
-     |> assign(:interaction_files, interaction_files)}
+      interaction_files =
+        if storage_enabled?(),
+          do: Attachments.list_files_by_interaction(Enum.map(interactions, & &1.uuid)),
+          else: %{}
+
+      {:ok,
+       socket
+       |> assign(:interactions, interactions)
+       |> assign(:interaction_files, interaction_files)
+       |> assign(:loaded_company_uuid, company_uuid)}
+    end
   end
 
   defp member_contact_uuids(company_uuid) do

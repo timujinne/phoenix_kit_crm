@@ -7,18 +7,24 @@ defmodule PhoenixKitCRM.Companies do
   import Ecto.Query, warn: false
 
   alias PhoenixKit.RepoHelper
-  alias PhoenixKitCRM.Schemas.{Company, CompanyMembership}
+  alias PhoenixKitCRM.Schemas.{Company, CompanyMembership, Contact}
   alias PhoenixKitCRM.SoftDelete
 
   defp repo, do: RepoHelper.repo()
 
-  @doc "Memberships at a company (primary first), each with its contact preloaded."
+  @doc """
+  Memberships at a company (primary first), each with its contact preloaded.
+  Excludes memberships whose contact is trashed so soft-deleted people don't
+  linger in the roster or the company's interactions rollup.
+  """
   @spec list_memberships(UUIDv7.t() | String.t() | nil) :: [CompanyMembership.t()]
   def list_memberships(company_uuid) do
     case Ecto.UUID.cast(company_uuid) do
       {:ok, _} ->
         from(m in CompanyMembership,
-          where: m.company_uuid == ^company_uuid,
+          join: c in Contact,
+          on: c.uuid == m.contact_uuid,
+          where: m.company_uuid == ^company_uuid and c.status != "trashed",
           order_by: [desc: m.is_primary, asc: m.position]
         )
         |> repo().all()
@@ -48,8 +54,13 @@ defmodule PhoenixKitCRM.Companies do
   @spec list_by_uuids([binary()]) :: [Company.t()]
   def list_by_uuids([]), do: []
 
-  def list_by_uuids(uuids) when is_list(uuids),
-    do: from(c in Company, where: c.uuid in ^uuids) |> repo().all()
+  def list_by_uuids(uuids) when is_list(uuids) do
+    # Drop malformed ids so one bad element can't raise an Ecto cast error.
+    case Enum.filter(uuids, &valid_uuid?/1) do
+      [] -> []
+      valid -> from(c in Company, where: c.uuid in ^valid) |> repo().all()
+    end
+  end
 
   @spec count_companies(keyword()) :: non_neg_integer()
   def count_companies(opts \\ []) do
@@ -111,12 +122,12 @@ defmodule PhoenixKitCRM.Companies do
   @doc "Searches companies by name (case-insensitive) for the picker. Excludes trashed."
   @spec search_companies(String.t(), pos_integer()) :: [Company.t()]
   def search_companies(query, limit \\ 8) when is_binary(query) do
-    q = String.trim(query)
+    q = query |> String.replace("\x00", "") |> String.trim()
 
     if q == "" do
       []
     else
-      like = "%#{q}%"
+      like = like_pattern(q)
 
       Company
       |> where([c], c.status != "trashed")
@@ -127,6 +138,19 @@ defmodule PhoenixKitCRM.Companies do
     end
   end
 
+  # Wrap a trimmed search term in `%…%`, escaping the LIKE/ILIKE metacharacters
+  # (`\`, `%`, `_`) so a literal `%` matches a percent sign rather than acting as
+  # a wildcard. Postgres ILIKE uses backslash as the default escape character.
+  defp like_pattern(q) do
+    escaped =
+      q
+      |> String.replace("\\", "\\\\")
+      |> String.replace("%", "\\%")
+      |> String.replace("_", "\\_")
+
+    "%#{escaped}%"
+  end
+
   defp apply_status_scope(query, opts) do
     cond do
       opts[:status] -> where(query, [c], c.status == ^opts[:status])
@@ -134,4 +158,6 @@ defmodule PhoenixKitCRM.Companies do
       true -> where(query, [c], c.status != "trashed")
     end
   end
+
+  defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 end

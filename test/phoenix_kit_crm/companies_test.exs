@@ -1,12 +1,17 @@
 defmodule PhoenixKitCRM.CompaniesTest do
   use PhoenixKitCRM.DataCase, async: true
 
-  alias PhoenixKitCRM.Companies
+  alias PhoenixKitCRM.{Companies, Contacts}
   alias PhoenixKitCRM.Schemas.Company
 
   defp company_fixture(attrs \\ %{}) do
     {:ok, company} = Companies.create_company(Map.merge(%{"name" => "Test Co"}, attrs))
     company
+  end
+
+  defp contact_fixture(name) do
+    {:ok, contact} = Contacts.create_contact(%{"name" => name})
+    contact
   end
 
   describe "create_company/1" do
@@ -88,6 +93,22 @@ defmodule PhoenixKitCRM.CompaniesTest do
     end
   end
 
+  describe "list_memberships/1" do
+    test "excludes memberships whose contact is trashed" do
+      company = company_fixture(%{"name" => "Roster Co"})
+      active = contact_fixture("Active Member")
+      gone = contact_fixture("Gone Member")
+      {:ok, _} = Contacts.set_primary_company(active, company.uuid, "Eng", nil)
+      {:ok, _} = Contacts.set_primary_company(gone, company.uuid, "Eng", nil)
+
+      {:ok, _} = Contacts.trash_contact(gone)
+
+      member_uuids = company.uuid |> Companies.list_memberships() |> Enum.map(& &1.contact_uuid)
+      assert active.uuid in member_uuids
+      refute gone.uuid in member_uuids
+    end
+  end
+
   describe "list_by_uuids/1" do
     test "returns the companies for the given uuids; [] for empty input" do
       a = company_fixture(%{"name" => "A"})
@@ -95,6 +116,16 @@ defmodule PhoenixKitCRM.CompaniesTest do
       uuids = [a.uuid, b.uuid] |> Companies.list_by_uuids() |> Enum.map(& &1.uuid)
       assert a.uuid in uuids and b.uuid in uuids
       assert Companies.list_by_uuids([]) == []
+    end
+
+    test "drops malformed uuids instead of raising" do
+      a = company_fixture(%{"name" => "Valid Co"})
+
+      assert ["not-a-uuid", a.uuid] |> Companies.list_by_uuids() |> Enum.map(& &1.uuid) == [
+               a.uuid
+             ]
+
+      assert Companies.list_by_uuids(["also-bad"]) == []
     end
   end
 
@@ -106,6 +137,22 @@ defmodule PhoenixKitCRM.CompaniesTest do
       uuids = "Searchable" |> Companies.search_companies() |> Enum.map(& &1.uuid)
       assert hit.uuid in uuids
       refute trashed.uuid in uuids
+    end
+
+    test "escapes LIKE wildcards so % matches literally, not everything" do
+      pct = company_fixture(%{"name" => "100% Cotton"})
+      plain = company_fixture(%{"name" => "Plain Cotton"})
+
+      # Unescaped, "%" would be a wildcard matching every company.
+      uuids = "%" |> Companies.search_companies() |> Enum.map(& &1.uuid)
+      assert pct.uuid in uuids
+      refute plain.uuid in uuids
+    end
+
+    test "tolerates a null byte in the query (no Postgres crash)" do
+      hit = company_fixture(%{"name" => "Nullsafe Co"})
+      uuids = "Null\x00safe" |> Companies.search_companies() |> Enum.map(& &1.uuid)
+      assert hit.uuid in uuids
     end
   end
 end

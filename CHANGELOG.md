@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.4] - 2026-06-28
+
+Post-merge review fixes for the interaction-tracker buildout (PR #8) —
+correctness, authorization, and performance hardening. No changes to the stable
+public surface (`RoleSettings`, `UserRoleView`, `ColumnConfig`).
+
+### Fixed
+
+- `version/0` now reports the package version (it was stale at `0.1.0`); a test
+  keeps it in sync with `mix.exs`.
+- Company rosters and the company interactions rollup no longer include
+  soft-deleted contacts — `Companies.list_memberships/1` excludes trashed members.
+- Avatar selection is authorization-scoped: `Attachments.set_avatar/3` only
+  accepts an image that belongs to the record's own `Images` folder, so a forged
+  event can't point a record's avatar at an arbitrary file.
+- Contact/company search escapes the `% _ \` LIKE metacharacters and strips null
+  bytes — a literal `%` no longer matches everything, and a null byte can't crash
+  Postgres.
+- `Contacts.get_by_user_uuid/1` and both `list_by_uuids/1` tolerate malformed
+  UUIDs (return `nil`/`[]`) instead of raising an `Ecto.Query.CastError`.
+- `Interactions.update_interaction/4` no longer wipes the involved parties when
+  none are passed (the default is now "keep"), and preserves each party's frozen
+  profile snapshot across an edit instead of re-deriving it from current data.
+
+### Changed
+
+- Composer file uploads are restricted to a curated type allowlist (no inline
+  `html`/`svg`/`xml`) with an explicit 25 MiB per-file cap, instead of
+  `accept: :any` with the 8 MB default.
+- Removed duplicate/needless queries: the contact-form company list and the
+  role-view column metadata no longer load in `mount/3` (which runs twice); the
+  column modal only queries when open; and the media + company-interactions
+  components guard their `update/2` reloads (the contact interactions feed still
+  live-refreshes via PubSub).
+- The PartyPicker JS hook clears its staging fallback timer on `destroyed()`.
+
+### Internal
+
+- Dialyzer is clean again: fixed two warnings in the PR #8 code and added a
+  scoped `.dialyzer_ignore.exs` for the Gettext/Expo opaque-type false positive
+  in the generated Gettext backend.
+
 ## [0.2.3] - 2026-05-25
 
 Incremental i18n coverage plus a dependency refresh. No API changes; the

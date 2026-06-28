@@ -16,6 +16,21 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   alias PhoenixKitCRM.{Attachments, Contacts, Interactions, StaffLink}
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
 
+  # Curated attachment allowlist — broad enough for real CRM attachments but
+  # excludes inline-renderable script vectors (.html/.htm/.svg/.xml/.xhtml) that
+  # could be served same-origin. Don't trust the browser-supplied content-type;
+  # the extension is what core derives the stored/served mime from.
+  @upload_accept ~w(
+    .jpg .jpeg .png .gif .webp .bmp .tiff .heic
+    .pdf .txt .csv .rtf .md
+    .doc .docx .xls .xlsx .ppt .pptx .odt .ods .odp
+    .zip .gz .tar
+    .mp3 .wav .m4a .ogg
+    .mp4 .mov .webm .mkv
+  )
+  # Explicit size cap (LiveView's default is only 8 MB) — 25 MiB per file.
+  @max_upload_size 26_214_400
+
   @impl true
   def update(assigns, socket) do
     socket = assign(socket, assigns)
@@ -38,7 +53,25 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
      |> assign(:staff_enabled, StaffLink.enabled?())
      |> assign(:storage_enabled, storage_enabled?())
      |> maybe_allow_upload()
-     |> load_interactions()}
+     |> maybe_reload_interactions()}
+  end
+
+  # Reload the feed only when the contact changes (mount / navigation) or the
+  # host signals a refresh via `:refresh_token` (its PubSub-driven `send_update`).
+  # An unrelated host re-render (e.g. the header avatar changing) re-passes the
+  # contact struct but no new token, so we skip the timeline re-query.
+  defp maybe_reload_interactions(socket) do
+    uuid = socket.assigns.contact.uuid
+    token = socket.assigns[:refresh_token]
+
+    if socket.assigns[:loaded_uuid] == uuid and socket.assigns[:loaded_token] == token do
+      socket
+    else
+      socket
+      |> load_interactions()
+      |> assign(:loaded_uuid, uuid)
+      |> assign(:loaded_token, token)
+    end
   end
 
   defp load_interactions(socket) do
@@ -235,8 +268,9 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
       socket.assigns.storage_enabled and Storage.list_enabled_buckets() != [] ->
         socket
         |> allow_upload(:attachments,
-          accept: :any,
+          accept: @upload_accept,
           max_entries: 10,
+          max_file_size: @max_upload_size,
           auto_upload: true,
           progress: &handle_progress/3
         )
@@ -331,8 +365,6 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     # Never let the error-message builder itself crash the save handler.
     _ -> default_save_error()
   end
-
-  defp changeset_message(_), do: default_save_error()
 
   defp default_save_error do
     gettext("Couldn't save this interaction. Your input was kept — please try again.")

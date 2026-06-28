@@ -40,15 +40,29 @@ defmodule PhoenixKitCRM.Web.MediaComponent do
     kind = socket.assigns.kind
     rtype = socket.assigns.resource_type
     record = socket.assigns.resource
+    key = {record.uuid, kind}
 
-    {:ok,
-     socket
-     |> assign_new(:show_picker, fn -> false end)
-     |> assign(:folder_uuid, Attachments.folder_uuid(rtype, record.uuid, kind))
-     |> assign(:avatar_uuid, Attachments.avatar_uuid(record))
-     |> assign(:avatar_noun, avatar_noun(rtype))
-     |> assign(:rollup_files, rollup_files(rtype, record.uuid, kind))
-     |> reload()}
+    # `avatar_uuid` is a cheap metadata read — keep it current so an avatar set
+    # elsewhere (e.g. the header picker) reflects here. The folder/file/rollup
+    # queries only change when the record or tab does, so guard them: the
+    # component reloads its own files after each add/remove, and the host never
+    # relies on update/2 to refresh media content.
+    socket =
+      socket
+      |> assign_new(:show_picker, fn -> false end)
+      |> assign(:avatar_uuid, Attachments.avatar_uuid(record))
+      |> assign(:avatar_noun, avatar_noun(rtype))
+
+    if socket.assigns[:loaded_key] == key do
+      {:ok, socket}
+    else
+      {:ok,
+       socket
+       |> assign(:folder_uuid, Attachments.folder_uuid(rtype, record.uuid, kind))
+       |> assign(:rollup_files, rollup_files(rtype, record.uuid, kind))
+       |> assign(:loaded_key, key)
+       |> reload()}
+    end
   end
 
   # The contact Files tab rolls up files attached to that contact's interactions
@@ -84,7 +98,7 @@ defmodule PhoenixKitCRM.Web.MediaComponent do
   # Set one of the record's images as its avatar. The host owns the header
   # avatar, so notify it to reload after the metadata write.
   def handle_event("set_as_avatar", %{"uuid" => uuid}, socket) do
-    case Attachments.set_avatar(socket.assigns.resource, uuid) do
+    case Attachments.set_avatar(socket.assigns.resource_type, socket.assigns.resource, uuid) do
       {:ok, _} ->
         Activity.log("crm.#{socket.assigns.resource_type}_avatar_set",
           actor_uuid: Activity.actor_uuid(socket),

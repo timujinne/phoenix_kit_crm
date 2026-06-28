@@ -14,7 +14,9 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, companies: Companies.list_companies())}
+    # No DB queries in mount/3 — it runs twice (HTTP + WebSocket). The company
+    # list loads in handle_params via the form assigners below.
+    {:ok, socket}
   end
 
   @impl true
@@ -39,6 +41,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
   defp assign_new_form(socket) do
     socket
+    |> assign(:companies, Companies.list_companies())
     |> assign(:contact, %Contact{})
     |> assign(:page_title, gettext("New contact"))
     |> assign(:form, to_form(Contacts.change_contact(%Contact{})))
@@ -52,6 +55,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     membership = Contacts.primary_membership(contact)
 
     socket
+    |> assign(:companies, Companies.list_companies())
     |> assign(:contact, contact)
     |> assign(:page_title, gettext("Edit contact"))
     |> assign(:form, to_form(Contacts.change_contact(contact)))
@@ -193,8 +197,9 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     socket
     |> assign(:form, to_form(changeset))
     |> assign(:company_uuid, company_uuid)
-    |> assign(:role_in_company, role || "")
-    |> assign(:department, dept || "")
+    # role/dept always arrive as strings (built via safe_text/1 at the call sites).
+    |> assign(:role_in_company, role)
+    |> assign(:department, dept)
     |> assign(:allow_login, allow_login)
   end
 

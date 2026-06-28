@@ -43,8 +43,13 @@ defmodule PhoenixKitCRM.Contacts do
   @spec list_by_uuids([binary()]) :: [Contact.t()]
   def list_by_uuids([]), do: []
 
-  def list_by_uuids(uuids) when is_list(uuids),
-    do: from(c in Contact, where: c.uuid in ^uuids) |> repo().all()
+  def list_by_uuids(uuids) when is_list(uuids) do
+    # Drop malformed ids so one bad element can't raise an Ecto cast error.
+    case Enum.filter(uuids, &valid_uuid?/1) do
+      [] -> []
+      valid -> from(c in Contact, where: c.uuid in ^valid) |> repo().all()
+    end
+  end
 
   @spec count_contacts(keyword()) :: non_neg_integer()
   def count_contacts(opts \\ []) do
@@ -70,7 +75,11 @@ defmodule PhoenixKitCRM.Contacts do
   def get_by_user_uuid(nil), do: nil
 
   def get_by_user_uuid(user_uuid) do
-    repo().get_by(Contact, user_uuid: user_uuid)
+    # Format-check first so a malformed id returns nil instead of raising.
+    case Ecto.UUID.cast(user_uuid) do
+      {:ok, _} -> repo().get_by(Contact, user_uuid: user_uuid)
+      :error -> nil
+    end
   end
 
   @doc "The contact's primary company membership (or the first), or nil."
@@ -132,12 +141,12 @@ defmodule PhoenixKitCRM.Contacts do
   """
   @spec search_contacts(String.t(), pos_integer(), [binary()]) :: [Contact.t()]
   def search_contacts(query, limit \\ 8, exclude_uuids \\ []) when is_binary(query) do
-    q = String.trim(query)
+    q = query |> String.replace("\x00", "") |> String.trim()
 
     if q == "" do
       []
     else
-      like = "%#{q}%"
+      like = like_pattern(q)
 
       Contact
       |> where([c], c.status != "trashed")
@@ -151,6 +160,19 @@ defmodule PhoenixKitCRM.Contacts do
 
   defp maybe_exclude_uuids(query, []), do: query
   defp maybe_exclude_uuids(query, uuids), do: where(query, [c], c.uuid not in ^uuids)
+
+  # Wrap a trimmed search term in `%…%`, escaping the LIKE/ILIKE metacharacters
+  # (`\`, `%`, `_`) so a literal `%` matches a percent sign rather than acting as
+  # a wildcard. Postgres ILIKE uses backslash as the default escape character.
+  defp like_pattern(q) do
+    escaped =
+      q
+      |> String.replace("\\", "\\\\")
+      |> String.replace("%", "\\%")
+      |> String.replace("_", "\\_")
+
+    "%#{escaped}%"
+  end
 
   # ── Company membership (v1: a single primary company per contact) ───
 
@@ -278,4 +300,6 @@ defmodule PhoenixKitCRM.Contacts do
       true -> where(query, [c], c.status != "trashed")
     end
   end
+
+  defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 end

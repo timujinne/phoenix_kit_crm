@@ -134,9 +134,9 @@ defmodule PhoenixKitCRM.Interactions do
     end
   end
 
-  @spec update_interaction(Interaction.t(), map(), [map()], keyword()) ::
+  @spec update_interaction(Interaction.t(), map(), [map()] | nil, keyword()) ::
           {:ok, Interaction.t()} | {:error, Ecto.Changeset.t()}
-  def update_interaction(%Interaction{} = interaction, attrs, party_inputs \\ [], opts \\ []) do
+  def update_interaction(%Interaction{} = interaction, attrs, party_inputs \\ nil, opts \\ []) do
     # Capture the OLD involved contacts before we replace parties / change the
     # subject, so anyone dropped by this edit still gets a refresh to remove it.
     old_uuids = PubSub.involved_contact_uuids(repo().preload(interaction, :parties))
@@ -145,7 +145,7 @@ defmodule PhoenixKitCRM.Interactions do
       repo().transaction(fn ->
         case interaction |> Interaction.changeset(attrs) |> repo().update() do
           {:ok, updated} ->
-            replace_parties(updated, party_inputs)
+            reconcile_parties(updated, party_inputs)
             repo().preload(updated, [:parties], force: true)
 
           {:error, changeset} ->
@@ -215,7 +215,23 @@ defmodule PhoenixKitCRM.Interactions do
 
   # ── Party reconciliation + snapshot ─────────────────────────────────
 
+  # `nil` = the caller isn't touching parties (keep them as-is). An explicit list
+  # (including `[]` to clear) reconciles them, preserving frozen snapshots.
+  defp reconcile_parties(_interaction, nil), do: :ok
+
+  defp reconcile_parties(interaction, party_inputs) when is_list(party_inputs),
+    do: replace_parties(interaction, party_inputs)
+
   defp replace_parties(%Interaction{uuid: interaction_uuid}, party_inputs) do
+    # Carry forward the snapshot frozen at log time for any party that's still
+    # present, so editing an interaction doesn't silently rewrite a party's
+    # profile to its *current* role/company. Only genuinely new parties get a
+    # fresh snapshot. (Empty on create — nothing to preserve.)
+    prior_snapshots =
+      from(p in InteractionParty, where: p.interaction_uuid == ^interaction_uuid)
+      |> repo().all()
+      |> Map.new(&{party_identity(&1), &1.party_snapshot})
+
     from(p in InteractionParty, where: p.interaction_uuid == ^interaction_uuid)
     |> repo().delete_all()
 
@@ -223,13 +239,15 @@ defmodule PhoenixKitCRM.Interactions do
     |> Enum.reject(&blank_party?/1)
     |> Enum.with_index()
     |> Enum.each(fn {input, idx} ->
+      snapshot = Map.get(prior_snapshots, input_identity(input)) || build_snapshot(input)
+
       changeset =
         InteractionParty.changeset(%InteractionParty{}, %{
           "interaction_uuid" => interaction_uuid,
           "raw_name" => party_raw_name(input),
           "contact_uuid" => input[:contact_uuid],
           "staff_person_uuid" => input[:staff_person_uuid],
-          "party_snapshot" => build_snapshot(input),
+          "party_snapshot" => snapshot,
           "position" => idx
         })
 
@@ -240,6 +258,21 @@ defmodule PhoenixKitCRM.Interactions do
         {:error, cs} -> repo().rollback(cs)
       end
     end)
+  end
+
+  # Stable identity of a party (resolved contact, resolved staff person, or its
+  # free-text name) — used to match an edit's inputs back to the existing parties
+  # so their frozen snapshots survive.
+  defp party_identity(%InteractionParty{contact_uuid: c}) when is_binary(c), do: {:contact, c}
+  defp party_identity(%InteractionParty{staff_person_uuid: s}) when is_binary(s), do: {:staff, s}
+  defp party_identity(%InteractionParty{raw_name: n}), do: {:raw, n && String.trim(n)}
+
+  defp input_identity(input) do
+    cond do
+      is_binary(input[:contact_uuid]) -> {:contact, input[:contact_uuid]}
+      is_binary(input[:staff_person_uuid]) -> {:staff, input[:staff_person_uuid]}
+      true -> {:raw, party_raw_name(input)}
+    end
   end
 
   defp blank_party?(input), do: party_raw_name(input) in [nil, ""]

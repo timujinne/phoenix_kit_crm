@@ -67,7 +67,7 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
   # Header-logo picker (a MediaSelectorModal with no `notify`) delivers its
   # result here; the Files/Images tab pickers notify their own component.
   def handle_info({:media_selected, [uuid | _]}, socket) when is_binary(uuid) do
-    case Attachments.set_avatar(socket.assigns.company, uuid) do
+    case Attachments.set_avatar(:company, socket.assigns.company, uuid) do
       {:ok, _} ->
         log_avatar(socket, "set")
         send(self(), {:avatar_changed})

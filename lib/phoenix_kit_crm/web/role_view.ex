@@ -48,7 +48,10 @@ defmodule PhoenixKitCRM.Web.RoleView do
              |> assign(:current_user_uuid, current_user.uuid)
              |> assign(:users, [])
              |> assign(:selected_columns, ColumnConfig.default_columns(scope))
-             |> assign(:column_meta, ColumnConfig.column_metadata_map(scope))
+             # No DB query in mount/3 (it runs twice). handle_params/3 loads the
+             # real metadata on connect; the empty map keeps the static first
+             # paint safe (labels fall back to the column id until connected).
+             |> assign(:column_meta, %{})
              |> assign(:show_column_modal, false)
              |> assign(:temp_selected_columns, nil)}
         end

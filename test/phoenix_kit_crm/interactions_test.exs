@@ -108,6 +108,65 @@ defmodule PhoenixKitCRM.InteractionsTest do
     end
   end
 
+  describe "update_interaction/4" do
+    test "nil party_inputs (the default) keeps the existing parties" do
+      c = contact_fixture()
+      party = contact_fixture("Party")
+
+      {:ok, i} =
+        Interactions.create_interaction(interaction_attrs(c), [
+          %{raw_name: "Party", contact_uuid: party.uuid}
+        ])
+
+      assert {:ok, _} = Interactions.update_interaction(i, %{"subject" => "Edited"})
+
+      reloaded = Interactions.get_interaction(i.uuid)
+      assert reloaded.subject == "Edited"
+      assert [p] = reloaded.parties
+      assert p.contact_uuid == party.uuid
+    end
+
+    test "preserves a party's frozen snapshot across an edit (no re-derive)" do
+      c = contact_fixture()
+      party = contact_fixture("Original Name")
+
+      {:ok, i} =
+        Interactions.create_interaction(interaction_attrs(c), [
+          %{raw_name: "Original Name", contact_uuid: party.uuid}
+        ])
+
+      [p0] = Interactions.get_interaction(i.uuid).parties
+      captured_at0 = p0.party_snapshot["captured_at"]
+
+      # The party's profile changes after the interaction was logged...
+      {:ok, _} = Contacts.update_contact(party, %{"name" => "New Name"})
+
+      # ...re-saving the interaction with the same party must NOT rewrite the
+      # snapshot to the current name / a new timestamp.
+      assert {:ok, _} =
+               Interactions.update_interaction(i, %{"subject" => "Edited"}, [
+                 %{raw_name: "Original Name", contact_uuid: party.uuid}
+               ])
+
+      [p1] = Interactions.get_interaction(i.uuid).parties
+      assert p1.party_snapshot["name"] == "Original Name"
+      assert p1.party_snapshot["captured_at"] == captured_at0
+    end
+
+    test "an explicit empty list clears the parties" do
+      c = contact_fixture()
+      party = contact_fixture("Party")
+
+      {:ok, i} =
+        Interactions.create_interaction(interaction_attrs(c), [
+          %{raw_name: "Party", contact_uuid: party.uuid}
+        ])
+
+      assert {:ok, _} = Interactions.update_interaction(i, %{"subject" => "Cleared"}, [])
+      assert Interactions.get_interaction(i.uuid).parties == []
+    end
+  end
+
   describe "delete_interaction/2" do
     test "removes the interaction" do
       c = contact_fixture()

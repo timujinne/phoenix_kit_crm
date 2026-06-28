@@ -31,7 +31,14 @@ defmodule PhoenixKitCRM.Web.ColumnModal do
   attr(:temp_selected, :list, default: nil)
 
   def column_modal(assigns) do
-    available = ColumnConfig.available_columns(assigns.scope)
+    # The modal markup is always in the DOM (`show` only toggles CSS), so only
+    # hit the DB for the available-column list when it's actually open — avoids a
+    # custom-fields query on every host re-render (search keystroke, sort, …).
+    available =
+      if assigns.show,
+        do: ColumnConfig.available_columns(assigns.scope),
+        else: %{standard: [], custom: []}
+
     column_meta = Map.new(available.standard ++ available.custom)
     current = assigns.temp_selected || assigns.selected
 

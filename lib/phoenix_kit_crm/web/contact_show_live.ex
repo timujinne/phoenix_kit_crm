@@ -91,8 +91,11 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
     if socket.assigns[:contact] do
       case socket.assigns[:tab] do
         "interactions" ->
+          # A fresh token forces the component to reload its feed (its update/2
+          # only re-queries on a contact change or a new refresh token).
           send_update(InteractionsComponent,
-            id: "crm-interactions-#{socket.assigns.contact.uuid}"
+            id: "crm-interactions-#{socket.assigns.contact.uuid}",
+            refresh_token: System.unique_integer([:monotonic])
           )
 
         "events" ->
@@ -121,7 +124,7 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
   # result here as a process message; the Files/Images tab pickers notify their
   # own component instead, so they don't land here.
   def handle_info({:media_selected, [uuid | _]}, socket) when is_binary(uuid) do
-    case Attachments.set_avatar(socket.assigns.contact, uuid) do
+    case Attachments.set_avatar(:contact, socket.assigns.contact, uuid) do
       {:ok, _} ->
         log_avatar(socket, "set")
         send(self(), {:avatar_changed})

@@ -100,6 +100,19 @@ defmodule PhoenixKitCRM.ContactsTest do
       assert a.uuid in uuids and b.uuid in uuids
       assert Contacts.list_by_uuids([]) == []
     end
+
+    test "drops malformed uuids instead of raising" do
+      a = contact_fixture(%{"name" => "Valid"})
+      assert ["not-a-uuid", a.uuid] |> Contacts.list_by_uuids() |> Enum.map(& &1.uuid) == [a.uuid]
+      assert Contacts.list_by_uuids(["also-bad"]) == []
+    end
+  end
+
+  describe "get_by_user_uuid/1" do
+    test "returns nil for nil and for a malformed uuid (no cast error)" do
+      assert Contacts.get_by_user_uuid(nil) == nil
+      assert Contacts.get_by_user_uuid("not-a-uuid") == nil
+    end
   end
 
   describe "search_contacts/3" do
@@ -117,6 +130,22 @@ defmodule PhoenixKitCRM.ContactsTest do
     test "blank query returns no results" do
       contact_fixture(%{"name" => "Whoever"})
       assert Contacts.search_contacts("   ") == []
+    end
+
+    test "escapes LIKE wildcards so % matches literally, not everything" do
+      pct = contact_fixture(%{"name" => "50% Off Sam"})
+      plain = contact_fixture(%{"name" => "Plain Sam"})
+
+      # Unescaped, "%" would be a wildcard matching every contact.
+      uuids = "%" |> Contacts.search_contacts() |> Enum.map(& &1.uuid)
+      assert pct.uuid in uuids
+      refute plain.uuid in uuids
+    end
+
+    test "tolerates a null byte in the query (no Postgres crash)" do
+      hit = contact_fixture(%{"name" => "Nullsafe Sam"})
+      uuids = "Null\x00safe" |> Contacts.search_contacts() |> Enum.map(& &1.uuid)
+      assert hit.uuid in uuids
     end
   end
 end

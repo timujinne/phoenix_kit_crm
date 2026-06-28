@@ -176,6 +176,7 @@ window.PhoenixKitCRMHooks = window.PhoenixKitCRMHooks || {};
     destroyed() {
       document.removeEventListener("click", this._docClick);
       clearTimeout(this.t);
+      clearTimeout(this.stageT);
     },
 
     onInput() {

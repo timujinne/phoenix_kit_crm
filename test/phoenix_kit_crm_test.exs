@@ -51,6 +51,12 @@ defmodule PhoenixKitCRMTest do
       assert function_exported?(PhoenixKitCRM, :enable_system, 0)
       assert function_exported?(PhoenixKitCRM, :disable_system, 0)
     end
+
+    test "version/0 matches the mix.exs package version" do
+      # Guards against the two version sources (mix.exs @version and this
+      # callback) drifting apart — they report the same string to the admin UI.
+      assert PhoenixKitCRM.version() == Mix.Project.config()[:version]
+    end
   end
 
   describe "permission_metadata/0" do
