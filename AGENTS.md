@@ -4,33 +4,46 @@ Guidance for AI agents working on the `phoenix_kit_crm` plugin module.
 
 ## Project overview
 
-PhoenixKit CRM module — early skeleton scaffolded from `phoenix_kit_hello_world`. Implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application. The Companies subtab is intentionally a placeholder until the legal-entity schema lands; the role opt-in flow and per-user view configuration are already wired and exercised in production.
+PhoenixKit CRM module — an interaction-tracking CRM. Implements the
+`PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
+
+Two primary entities: **contacts** (people) and **companies** (legal entities),
+with the **interactions** logged between them. Each contact/company carries media
+(Files/Images, when core Storage is on), comments (when `phoenix_kit_comments` is
+installed), and an Events activity feed. The role opt-in flow and per-user view
+configuration round it out.
 
 Registers one admin tab (`CRM`) with subtabs:
 
-- **Overview** (`/admin/crm`) — placeholder card with the enabled/disabled badge and a deep-link to settings
-- **Companies** (`/admin/crm/companies`) — table/card view with toggleable columns, gated by `crm_companies_enabled`
-- **Role subtabs** (`/admin/crm/role/:role_uuid`) — one per opted-in role; registered at runtime into `PhoenixKit.Dashboard.Registry` under the `:phoenix_kit_crm_roles` namespace
+- **Overview** (`/admin/crm`) — landing card with the enabled/disabled badge
+- **Contacts** (`/admin/crm/contacts`) — the people list; each opens a profile
+  (`ContactShowLive`) with Interactions / Files / Images / Comments / Events tabs
+- **Companies** (`/admin/crm/companies`) — legal entities with a Members roster
+  and an interactions rollup across those members (`CompanyShowLive`)
+- **Organizations** (`/admin/crm/organizations`) — organizations view
+- **Role subtabs** (`/admin/crm/role/:role_uuid`) — one per opted-in role,
+  registered at runtime into `PhoenixKit.Dashboard.Registry`
 
 Plus a settings tab at `/admin/settings/crm`.
 
-## What this module does NOT have (yet)
+## Architecture notes
 
-The skeleton is deliberately minimal. Track these gaps when extending:
-
-- **No legal-entity schema** — `CompaniesView` renders an empty list and shows a
-  Russian/English placeholder banner. The eventual `Company` schema, context, and
-  changeset go under `lib/phoenix_kit_crm/`.
-- **No `Errors` dispatcher** — no atom-to-gettext error module. When context
-  functions start returning `{:error, atom}` shapes, copy
-  `phoenix_kit_locations/lib/phoenix_kit_locations/errors.ex` as the reference.
-- **No activity logging** — once mutations land, follow the `PhoenixKit.Activity`
-  pattern from `phoenix_kit_hello_world` (guard with `Code.ensure_loaded?/1`,
-  rescue exceptions, action shape `"crm.<verb>"`).
-- **No production migrations in this repo** — module-owned tables are added via
-  versioned migrations in `phoenix_kit` core (V90+). See "Database" below.
-- **No integration tests** — only behaviour and path tests run today. Schema
-  tests should use `PhoenixKitCRM.DataCase` with the `:integration` tag.
+- **Schemas + contexts** under `lib/phoenix_kit_crm/` — the `Contacts`,
+  `Companies`, and `Interactions` contexts over `Schemas.{Contact, Company,
+  CompanyMembership, Interaction, InteractionParty}`. Soft-delete is a `status`
+  string column (`"trashed"`) with the prior status stashed in `metadata`; the
+  changeset logic is shared via `PhoenixKitCRM.SoftDelete`.
+- **Activity logging** — mutations log `"crm.<verb>"` actions through
+  `PhoenixKitCRM.Activity` (a `Code.ensure_loaded?`-guarded wrapper over
+  `PhoenixKit.Activity`); the Events-tab labels live in
+  `PhoenixKitCRM.ActivityLabels`. Never put PII (email / phone / free-text body)
+  in activity metadata, and don't set `target_uuid` to a non-user (it drives core
+  notifications).
+- **Migrations** are versioned in `phoenix_kit` **core** (the CRM tables
+  migration), not in this repo — see "Database" below.
+- **No `Errors` dispatcher** — context functions return changesets or simple
+  `{:error, atom}` shapes handled at the call site; there is no atom-to-gettext
+  error module (none is needed yet).
 
 ## Common commands
 
@@ -77,22 +90,31 @@ lib/phoenix_kit_crm/
 ├── column_config.ex                                  # Available columns + defaults per scope
 ├── sidebar_bootstrap.ex                              # Registers per-role tabs into Dashboard.Registry
 └── web/
-    ├── crm_live.ex                                   # Overview LiveView (placeholder card)
-    ├── settings_live.ex                              # Settings LiveView (toggles, role opt-in, Companies opt-in)
-    ├── companies_view.ex                             # Companies LiveView (table/card with column modal)
+    ├── crm_live.ex                                   # CRM landing LiveView (Overview)
+    ├── contacts_live.ex                              # Contacts list
+    ├── contact_form_live.ex                          # Contact new/edit form
+    ├── contact_show_live.ex                          # Contact profile (Interactions/Files/Images/Comments/Events)
+    ├── companies_live.ex                             # Companies list
+    ├── company_form_live.ex                          # Company new/edit form
+    ├── company_show_live.ex                          # Company profile (Members + tabs)
+    ├── organizations_view.ex                         # Organizations LiveView
     ├── role_view.ex                                  # Per-role users LiveView
-    ├── column_management.ex                          # Shared mixin for column-modal events
-    └── column_modal.ex                               # Column picker modal component
+    ├── settings_live.ex                              # Settings LiveView (module toggle, role opt-in)
+    ├── interactions_component.ex                     # Contact interactions composer + timeline
+    ├── company_interactions_component.ex             # Company interactions rollup (read-only)
+    ├── events_component.ex                           # Events (activity) feed tab
+    ├── media_component.ex                            # Files/Images tab (core Storage)
+    ├── column_management.ex / column_modal.ex        # Per-user column picker
+    └── cell_format.ex / interaction_helpers.ex       # Render helpers
 ```
 
 ### Settings keys
 
 - `crm_enabled` — module on/off (set via `enable_system/0` / `disable_system/0`)
-- `crm_companies_enabled` — Companies subtab visibility (gated in `admin_tabs/0` via `visible:` and re-checked in `CompaniesView.mount/3`)
 
 ### Tab registration
 
-- Static tabs (Overview, Companies, settings) come from `admin_tabs/0` and `settings_tabs/0`. Companies uses `visible: fn _scope -> Settings.get_boolean_setting("crm_companies_enabled", false) end`.
+- Static tabs (Overview, Contacts, Companies, Organizations, settings) come from `admin_tabs/0` and `settings_tabs/0`.
 - **Per-role tabs are runtime-registered** by `PhoenixKitCRM.SidebarBootstrap` into `PhoenixKit.Dashboard.Registry` under `:phoenix_kit_crm_roles`. Bootstrap runs:
   1. At boot, via `children/0` as a one-shot `Task` (`restart: :temporary`).
   2. After every `RoleSettings.set_enabled/2`, via `PhoenixKitCRM.refresh_sidebar/0` (which unregisters then re-bootstraps).
@@ -104,7 +126,7 @@ lib/phoenix_kit_crm/
 
 `PhoenixKitCRM.ColumnConfig` defines available columns + defaults per scope. Scopes:
 
-- `:companies` — placeholder columns until the Company schema lands
+- `:organizations` — columns for the organizations view
 - `{:role, role_uuid}` — mirrors standard PhoenixKit user fields (email, username, full_name, status, registered, last_confirmed, location)
 
 Selections are persisted via `PhoenixKitCRM.UserRoleView` (keyed by `(user_uuid, scope_string)`). The column-modal UI lives in `PhoenixKitCRM.Web.ColumnModal` and is wired into LiveViews through `use PhoenixKitCRM.Web.ColumnManagement`.
@@ -137,10 +159,15 @@ Two patterns coexist in this module:
 
 ## Database
 
-This module owns two tables. **Production migrations live in `phoenix_kit` core**, not here. When adding the `Company` schema (or any other CRM-owned table), create the next versioned migration (`VNN_*.ex`) under `phoenix_kit/lib/phoenix_kit/migrations/postgres/`.
+**Production migrations live in `phoenix_kit` core**, not here. Adding a new CRM-owned table means the next versioned migration (`VNN_*.ex`) under `phoenix_kit/lib/phoenix_kit/migrations/postgres/`.
 
-Module-owned tables today:
+Module-owned tables:
 
+- `phoenix_kit_crm_contacts` — people (the primary entity); soft-delete via a `status` column
+- `phoenix_kit_crm_companies` — legal entities; soft-delete via `status`
+- `phoenix_kit_crm_company_memberships` — contact↔company associations (role / department)
+- `phoenix_kit_crm_interactions` — logged interactions anchored to a contact
+- `phoenix_kit_crm_interaction_parties` — an interaction's involved parties + their frozen snapshots
 - `phoenix_kit_crm_role_settings` — primary key is `role_uuid` (FK to `phoenix_kit_user_roles`); columns `enabled`, `inserted_at`, `updated_at`.
 - `phoenix_kit_crm_user_role_view` — `(user_uuid, scope)` is unique; `view_config` is a JSON map; UUIDv7 primary key.
 
@@ -171,22 +198,49 @@ Without this, all DB calls through `PhoenixKit.RepoHelper` crash with "No reposi
 
 - `test/support/test_repo.ex` — `PhoenixKitCRM.Test.Repo`
 - `test/support/data_case.ex` — auto-tags `:integration`, sets up the SQL sandbox
-- `test/test_helper.exs` — checks DB availability via `psql -lqt`, creates `uuid_generate_v7()`, starts `PhoenixKit.PubSub.Manager` and `PhoenixKit.ModuleRegistry`
+- `test/support/live_case.ex` — LiveView case: wires `Test.Endpoint` + the SQL
+  sandbox, provides `fake_scope/1` + `put_test_scope/2`, and imports
+  `ActivityLogAssertions`
+- `test/support/{test_endpoint,test_router,test_layouts,test_hooks}.ex` — a
+  `server: false` endpoint + router mounting the CRM LiveViews under
+  `/en/admin/crm`, minimal layouts, and an `on_mount` hook that fakes
+  scope/current_user from the test session
+- `test/support/activity_log_assertions.ex` — `assert_activity_logged/2` +
+  `refute_activity_logged/2` (match action + actor / resource / metadata subset)
+- `test/test_helper.exs` — checks DB availability, creates `uuid_generate_v7()`,
+  migrates the test DB to the current core version (`ensure_current`), starts the
+  PubSub manager / module registry / test endpoint, forces the URL prefix to `/`,
+  and filters the expected OwnershipError settings-query log noise
+
+Run the integration + LiveView tests against a **local core checkout** — the CRM
+tables migration ships in core and is unreleased:
+
+```bash
+PHOENIX_KIT_PATH=../phoenix_kit mix test
+```
 
 ### Current coverage
 
-Only behaviour and path tests today (`test/phoenix_kit_crm_test.exs`):
-
-- `module_key/0`, `module_name/0`, `enabled?/0`, `enable_system/0`, `disable_system/0`
-- `permission_metadata/0` (key matches `module_key`, `hero-` icon prefix)
-- `admin_tabs/0` (permission threading, hyphenated paths, main tab points to `CRMLive`)
-- `settings_tabs/0` (CRM settings tab points to `SettingsLive`)
-- `Paths.index/0` and `Paths.settings/0`
+- **Module behaviour** (`phoenix_kit_crm_test.exs`) — callbacks, permission
+  metadata, `admin_tabs/0`, `settings_tabs/0`, `Paths`
+- **Contexts** — `Contacts` / `Companies` / `Interactions`: create+update
+  validation, get (incl. malformed uuid), soft-delete guards, listing + count,
+  search, `list_by_uuids`, interaction parties + frozen snapshots, and the
+  involving / for-contacts queries
+- **Helpers** — `SoftDelete`, `ActivityLabels`, `PubSub.involved_contact_uuids`,
+  `Paths`, and the `resolve_comment_resources/1` comment back-link resolver
+- **LiveViews** (`test/phoenix_kit_crm/web/`) — contacts/companies index render,
+  contact/company show + redirect-on-unknown, new/edit forms (create logs
+  `crm.<entity>_created`, blank-name validation, edit updates), and the list
+  trash action (logs `crm.contact_trashed`) — activity verified via
+  `ActivityLogAssertions`
 
 ### Stability check
 
+The suite touches the SQL sandbox + spawned settings queries, so vary the seed:
+
 ```bash
-for i in $(seq 1 10); do mix test; done
+for s in 0 1 2 3 17 42 99 999; do PHOENIX_KIT_PATH=../phoenix_kit mix test --seed $s; done
 ```
 
 ## Versioning & releases

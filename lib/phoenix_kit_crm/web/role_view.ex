@@ -56,8 +56,9 @@ defmodule PhoenixKitCRM.Web.RoleView do
   end
 
   @impl true
-  def handle_params(_params, _url, socket) do
+  def handle_params(params, _url, socket) do
     if connected?(socket) do
+      socket = maybe_reload_role(socket, params["role_uuid"])
       users = Roles.users_with_role(socket.assigns.role.name)
       selected = ColumnConfig.get_columns(socket.assigns.current_user_uuid, socket.assigns.scope)
 
@@ -70,6 +71,33 @@ defmodule PhoenixKitCRM.Web.RoleView do
       {:noreply, socket}
     end
   end
+
+  # Re-resolve role/scope when the URL points at a different role than the one
+  # loaded at mount. Latent today (no inter-role patch links exist), but it
+  # removes the stale-scope footgun if such a link is ever added. The common
+  # case — same role as mount — returns the socket untouched.
+  defp maybe_reload_role(socket, role_uuid) when is_binary(role_uuid) and role_uuid != "" do
+    if socket.assigns[:role] && socket.assigns.role.uuid == role_uuid do
+      socket
+    else
+      case Roles.get_role_by_uuid(role_uuid) do
+        nil ->
+          socket
+
+        role ->
+          scope = {:role, role_uuid}
+
+          socket
+          |> assign(:role, role)
+          |> assign(:scope, scope)
+          |> assign(:page_title, gettext("CRM — %{name}", name: role.name))
+          |> assign(:selected_columns, ColumnConfig.default_columns(scope))
+          |> assign(:column_meta, ColumnConfig.column_metadata_map(scope))
+      end
+    end
+  end
+
+  defp maybe_reload_role(socket, _role_uuid), do: socket
 
   @impl true
   def handle_event("navigate_to_user", %{"uuid" => uuid}, socket) do

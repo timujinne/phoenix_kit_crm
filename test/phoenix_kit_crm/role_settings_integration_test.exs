@@ -85,8 +85,9 @@ defmodule PhoenixKitCRM.RoleSettingsIntegrationTest do
 
   describe "list_eligible_roles/0" do
     test "excludes roles named Owner and Admin" do
-      create_role("Owner", is_system_role: true)
-      create_role("Admin", is_system_role: true)
+      # Owner/Admin/User are seeded as system roles by core's V01 migration, so
+      # they already exercise the exclusion — re-inserting them would violate the
+      # unique name constraint.
       _manager = create_role("Manager")
 
       names = RoleSettings.list_eligible_roles() |> Enum.map(& &1.name)
@@ -96,7 +97,6 @@ defmodule PhoenixKitCRM.RoleSettingsIntegrationTest do
     end
 
     test "returns all non-excluded roles" do
-      create_role("Owner", is_system_role: true)
       _manager = create_role("Manager")
       _agent = create_role("Agent")
 
@@ -105,9 +105,9 @@ defmodule PhoenixKitCRM.RoleSettingsIntegrationTest do
       assert "Agent" in names
     end
 
-    test "returns empty list when only system roles exist" do
-      create_role("Owner", is_system_role: true)
-      create_role("Admin", is_system_role: true)
+    test "returns empty list when only the seeded system roles exist" do
+      # No non-system roles created → only Owner/Admin/User (all system) remain,
+      # and list_eligible_roles rejects system roles.
       assert RoleSettings.list_eligible_roles() == []
     end
   end

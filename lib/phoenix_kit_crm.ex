@@ -13,6 +13,8 @@ defmodule PhoenixKitCRM do
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Settings
+  alias PhoenixKitCRM.{Companies, Contacts, Paths}
+  alias PhoenixKitCRM.Schemas.{Company, Contact}
 
   @enabled_setting "crm_enabled"
 
@@ -84,10 +86,36 @@ defmodule PhoenixKitCRM do
         gettext_backend: PhoenixKitCRM.Gettext
       ),
       Tab.new!(
+        id: :admin_crm_contacts,
+        label: "Contacts",
+        icon: "hero-user",
+        path: "/admin/crm/contacts",
+        priority: 652,
+        level: :admin,
+        permission: module_key(),
+        match: :prefix,
+        parent: :admin_crm,
+        live_view: {PhoenixKitCRM.Web.ContactsLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
+        id: :admin_crm_companies,
+        label: "Companies",
+        icon: "hero-building-office-2",
+        path: "/admin/crm/companies",
+        priority: 653,
+        level: :admin,
+        permission: module_key(),
+        match: :prefix,
+        parent: :admin_crm,
+        live_view: {PhoenixKitCRM.Web.CompaniesLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
         id: :admin_crm_organizations,
         label: "Organizations",
         path: "/admin/crm/organizations",
-        priority: 652,
+        priority: 654,
         level: :admin,
         permission: module_key(),
         match: :prefix,
@@ -168,4 +196,56 @@ defmodule PhoenixKitCRM do
 
   @impl PhoenixKit.Module
   def css_sources, do: [:phoenix_kit_crm]
+
+  # No `@impl` on purpose — older core releases don't declare the `js_sources/0`
+  # callback, and annotating it would warn (and fail `--warnings-as-errors`).
+  # Core's `:phoenix_kit_js_sources` compiler folds this into the host's module
+  # JS bundle where present. (Mirrors `phoenix_kit_projects`.)
+  def js_sources do
+    [
+      %{
+        app: :phoenix_kit_crm,
+        file: "static/assets/phoenix_kit_crm.js",
+        global: "PhoenixKitCRMHooks"
+      }
+    ]
+  end
+
+  @doc """
+  phoenix_kit_comments back-link resolver. Turns commented contact/company uuids
+  into `%{uuid => %{title, path}}` chips for the central Comments admin, so each
+  comment links back to the record it was made on (with the contact/company name
+  as the label).
+
+  Paths are RAW (no URL prefix) — the comments module applies the prefix/locale
+  itself. Registered via the host's config (see hello_world for the pattern):
+
+      config :phoenix_kit, :comment_resource_handlers, %{
+        "crm_contact" => PhoenixKitCRM,
+        "crm_company" => PhoenixKitCRM
+      }
+
+  Dispatched per `resource_type`, so each call's uuids are all one kind; we
+  resolve against both tables and merge, which is harmless for the empty side.
+  """
+  @spec resolve_comment_resources([binary()]) :: %{binary() => map()}
+  def resolve_comment_resources(uuids) when is_list(uuids) do
+    contacts =
+      uuids
+      |> Contacts.list_by_uuids()
+      |> Map.new(fn c ->
+        {c.uuid, %{title: Contact.display_name(c), path: Paths.contact_raw(c.uuid)}}
+      end)
+
+    companies =
+      uuids
+      |> Companies.list_by_uuids()
+      |> Map.new(fn co ->
+        {co.uuid, %{title: Company.display_name(co), path: Paths.company_raw(co.uuid)}}
+      end)
+
+    Map.merge(contacts, companies)
+  rescue
+    _ -> %{}
+  end
 end

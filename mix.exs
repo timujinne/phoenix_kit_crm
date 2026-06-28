@@ -72,7 +72,12 @@ defmodule PhoenixKitCRM.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper,
       # Dashboard tabs, and the admin layout this module renders into.
-      {:phoenix_kit, "~> 1.7"},
+      pk_dep(:phoenix_kit, "~> 1.7"),
+
+      # Hard, compile-time dep for the contact profile's Comments tab
+      # (`use PhoenixKitComments.Embed` + CommentsComponent). Runtime-gated on
+      # the module's admin toggle, so the tab hides when comments is disabled.
+      pk_dep(:phoenix_kit_comments, "~> 0.2"),
 
       # Per-module i18n — own Gettext backend for sidebar tab labels.
       {:gettext, "~> 1.0"},
@@ -94,6 +99,21 @@ defmodule PhoenixKitCRM.MixProject do
       # `render(view) =~ "..."`, etc. Test-only.
       {:lazy_html, ">= 0.1.0", only: :test}
     ]
+  end
+
+  # A phoenix_kit* dependency that can be swapped for a local checkout by
+  # exporting <APP>_PATH (e.g. `PHOENIX_KIT_PATH=../phoenix_kit mix test`) so the
+  # suite runs against unpublished local core (needed while the CRM tables
+  # migration is unreleased). Unset → the published Hex pin, so publish/CI are
+  # unaffected.
+  defp pk_dep(app, requirement, opts \\ []) do
+    env_var = String.upcase(Atom.to_string(app)) <> "_PATH"
+
+    case System.get_env(env_var) do
+      nil when opts == [] -> {app, requirement}
+      nil -> {app, requirement, opts}
+      path -> {app, [path: path, override: true] ++ opts}
+    end
   end
 
   defp package do

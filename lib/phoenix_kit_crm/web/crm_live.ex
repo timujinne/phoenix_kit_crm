@@ -74,14 +74,12 @@ defmodule PhoenixKitCRM.Web.CRMLive do
           </span>
         </div>
 
-        <div :if={@role_stats == []} class="card bg-base-100 shadow-sm">
-          <div class="card-body items-center text-center py-8 text-base-content/60">
-            <.icon name="hero-user-group" class="w-8 h-8" />
-            <p class="text-sm">
-              {gettext("No roles connected to CRM yet. Enable a role in CRM settings.")}
-            </p>
-          </div>
-        </div>
+        <.empty_state
+          :if={@role_stats == []}
+          icon="hero-user-group"
+          title={gettext("No roles connected to CRM yet. Enable a role in CRM settings.")}
+          variant="card"
+        />
 
         <div
           :if={@role_stats != []}

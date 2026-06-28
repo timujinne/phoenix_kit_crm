@@ -62,6 +62,23 @@ repo_available =
       $$ LANGUAGE plpgsql VOLATILE;
       """)
 
+      # Apply core's versioned migrations (including the CRM tables) so the
+      # integration suite has a schema. Without this the test DB is empty and
+      # every integration test fails on its first INSERT.
+      PhoenixKit.Migration.ensure_current(TestRepo, log: false)
+
+      # Record whether the resolved core actually shipped the CRM tables (its V138
+      # migration). Without PHOENIX_KIT_PATH the suite resolves the *published*
+      # core, which doesn't have them yet — so the integration + LiveView tests get
+      # excluded (with a hint) instead of failing on a missing relation.
+      %{rows: [[crm_tables?]]} =
+        TestRepo.query!(
+          "SELECT EXISTS (SELECT 1 FROM information_schema.tables " <>
+            "WHERE table_name = 'phoenix_kit_crm_contacts')"
+        )
+
+      Application.put_env(:phoenix_kit_crm, :crm_tables_present, crm_tables?)
+
       Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
       true
     rescue
@@ -85,8 +102,28 @@ repo_available =
 
 Application.put_env(:phoenix_kit_crm, :test_repo_available, repo_available)
 
+# The integration + LiveView tests need a core that has the CRM tables (V138).
+# When the DB is up but the resolved core lacks them (the published core, i.e. no
+# PHOENIX_KIT_PATH), exclude those tests with a clear hint instead of failing on a
+# missing relation.
+crm_tables_present =
+  repo_available and Application.get_env(:phoenix_kit_crm, :crm_tables_present, false)
+
+if repo_available and not crm_tables_present do
+  IO.puts("""
+  \n  Resolved core has no CRM tables (its V138 migration isn't applied) —
+     integration + LiveView tests excluded. Run against local core:
+       PHOENIX_KIT_PATH=../phoenix_kit mix test
+  """)
+end
+
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
+
+# Force PhoenixKit's URL prefix to "/" so Paths.*/Routes.path produce URLs the
+# test router can match. Admin paths always get the default locale ("en") prefix,
+# so the test router scope is `/en/admin/crm`.
+:persistent_term.put({PhoenixKit.Config, :url_prefix}, "/")
 
 i18n_api_available =
   Code.ensure_loaded?(PhoenixKit.Dashboard.Tab) and
@@ -104,9 +141,39 @@ end
 
 exclude =
   [
-    if(!repo_available, do: :integration),
+    if(!repo_available or !crm_tables_present, do: :integration),
     if(!i18n_api_available, do: :requires_phoenix_kit_i18n_api)
   ]
   |> Enum.reject(&is_nil/1)
+
+# Start the test Endpoint so Phoenix.LiveViewTest can drive the CRM LiveViews via
+# `live/2`. Runs with `server: false` (no port). Only when the LiveView tests will
+# actually run (DB up + CRM tables present), since they're tagged :integration.
+if repo_available and crm_tables_present do
+  {:ok, _} = PhoenixKitCRM.Test.Endpoint.start_link()
+end
+
+# Quiet the expected "Failed to query setting …" OwnershipError noise: background
+# processes (module registry / locale resolution) occasionally query settings
+# without a sandbox connection during tests. Core handles these gracefully
+# (returns the default); they're log spam, not failures.
+:logger.add_primary_filter(
+  :phoenix_kit_crm_drop_settings_noise,
+  {fn log_event, _extra ->
+     msg =
+       case log_event do
+         %{msg: {:string, m}} ->
+           IO.iodata_to_binary(m)
+
+         %{msg: {fmt, args}} when is_list(fmt) ->
+           fmt |> :io_lib.format(args) |> IO.iodata_to_binary()
+
+         _ ->
+           ""
+       end
+
+     if String.contains?(msg, "Failed to query"), do: :stop, else: :ignore
+   end, []}
+)
 
 ExUnit.start(exclude: exclude)
