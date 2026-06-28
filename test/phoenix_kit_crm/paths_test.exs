@@ -1,5 +1,8 @@
 defmodule PhoenixKitCRM.PathsTest do
-  use ExUnit.Case, async: true
+  # DataCase (sandbox connection + :integration tag): Paths.* go through
+  # Routes.path, which reads the languages_enabled setting from the DB, so these
+  # need a connection.
+  use PhoenixKitCRM.DataCase, async: true
 
   alias PhoenixKitCRM.Paths
 

@@ -1,6 +1,22 @@
 defmodule PhoenixKitCRMTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
+
+  # Most tests here are pure (callback shapes, tab config). A few hit the DB —
+  # enabled?/0 (settings table) and Paths.index/settings (Routes.path reads
+  # languages_enabled). Those are tagged :integration and get a sandbox
+  # connection here; without it they flaked, only passing when the settings cache
+  # happened to be warm.
+  setup context do
+    if context[:integration] do
+      pid = Sandbox.start_owner!(PhoenixKitCRM.Test.Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(pid) end)
+    end
+
+    :ok
+  end
+
   describe "behaviour implementation" do
     test "implements PhoenixKit.Module" do
       behaviours =
@@ -26,6 +42,7 @@ defmodule PhoenixKitCRMTest do
       assert PhoenixKitCRM.module_name() == "CRM"
     end
 
+    @tag :integration
     test "enabled?/0 returns a boolean" do
       assert is_boolean(PhoenixKitCRM.enabled?())
     end
@@ -78,10 +95,12 @@ defmodule PhoenixKitCRMTest do
   describe "Paths" do
     alias PhoenixKitCRM.Paths
 
+    @tag :integration
     test "index/0 points to the CRM admin page" do
       assert String.ends_with?(Paths.index(), "/admin/crm")
     end
 
+    @tag :integration
     test "settings/0 points to the CRM settings page" do
       assert String.ends_with?(Paths.settings(), "/admin/settings/crm")
     end

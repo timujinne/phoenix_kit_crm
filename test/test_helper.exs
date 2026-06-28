@@ -126,4 +126,27 @@ if repo_available do
   {:ok, _} = PhoenixKitCRM.Test.Endpoint.start_link()
 end
 
+# Quiet the expected "Failed to query setting …" OwnershipError noise: background
+# processes (module registry / locale resolution) occasionally query settings
+# without a sandbox connection during tests. Core handles these gracefully
+# (returns the default); they're log spam, not failures.
+:logger.add_primary_filter(
+  :phoenix_kit_crm_drop_settings_noise,
+  {fn log_event, _extra ->
+     msg =
+       case log_event do
+         %{msg: {:string, m}} ->
+           IO.iodata_to_binary(m)
+
+         %{msg: {fmt, args}} when is_list(fmt) ->
+           fmt |> :io_lib.format(args) |> IO.iodata_to_binary()
+
+         _ ->
+           ""
+       end
+
+     if String.contains?(msg, "Failed to query"), do: :stop, else: :ignore
+   end, []}
+)
+
 ExUnit.start(exclude: exclude)
