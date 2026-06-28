@@ -2,18 +2,19 @@
 
 CRM module for [PhoenixKit](https://github.com/BeamLabEU/phoenix_kit) — implements the `PhoenixKit.Module` behaviour for auto-discovery by a parent Phoenix application.
 
-This is an early skeleton scaffolded from
-[phoenix_kit_hello_world](https://github.com/BeamLabEU/phoenix_kit_hello_world).
-The Companies subtab is a placeholder until the legal-entity schema lands;
-roles and per-user view configuration are already wired up.
+An interaction-tracking CRM: **contacts** (people) and **companies** (legal entities), the interactions logged between them, each with its own media, comments, and activity feed. Roles opt in to CRM access, and every admin gets per-user column configuration.
 
 ## Features
 
-- **Admin sidebar** — `CRM` parent tab with **Overview** and (opt-in) **Companies** subtabs.
+- **Contacts** — people with profile fields, an optional linked login account, a circular avatar, and soft-delete (trash/restore). Each contact has **Interactions**, **Files**, **Images**, **Comments**, and **Events** (activity) tabs.
+- **Companies** — legal entities with a **Members** roster (contacts + their role/department), an **Interactions** rollup across those members, a logo, soft-delete, and the same Files/Images/Comments/Events tabs.
+- **Interactions** — logged interactions (call/email/meeting/note/other) anchored to a contact, with resolvable involved parties (CRM contacts or staff people) and a profile snapshot frozen at save time.
 - **Role opt-in** — choose which non-system roles can access CRM; enabled roles get their own subtab under `/admin/crm/role/:role_uuid`.
-- **Per-user column config** — each admin can pick which columns to show on the Companies and per-role pages; layout is persisted in `phoenix_kit_crm_user_role_view`.
-- **Settings page** — toggle the module, opt roles in/out, and enable/disable the Companies section.
+- **Per-user column config** — each admin picks which columns to show; the layout is persisted in `phoenix_kit_crm_user_role_view`.
+- **Activity logging** — create/update/trash/delete across contacts, companies, and interactions is recorded and surfaced on each record's Events tab.
 - **Auto-discovery** — no parent-app router edits; PhoenixKit picks the module up via the `@phoenix_kit_module` beam attribute.
+
+Files/Images tabs require core **Storage** to be enabled; the **Comments** tab requires the `phoenix_kit_comments` module.
 
 ## Installation
 
@@ -32,31 +33,35 @@ sidebar automatically; toggle it on to expose `/admin/crm`.
 
 ## Routes
 
-| Path                                   | LiveView                              |
-|----------------------------------------|---------------------------------------|
-| `/admin/crm`                           | `PhoenixKitCRM.Web.CRMLive`           |
-| `/admin/crm/companies`                 | `PhoenixKitCRM.Web.CompaniesView`     |
-| `/admin/crm/role/:role_uuid`           | `PhoenixKitCRM.Web.RoleView`          |
-| `/admin/settings/crm`                  | `PhoenixKitCRM.Web.SettingsLive`      |
+| Path                                         | LiveView                          |
+|----------------------------------------------|-----------------------------------|
+| `/admin/crm`                                 | `PhoenixKitCRM.Web.CRMLive`       |
+| `/admin/crm/contacts`                        | `PhoenixKitCRM.Web.ContactsLive`  |
+| `/admin/crm/contacts/new` · `/:uuid/edit`    | `PhoenixKitCRM.Web.ContactFormLive` |
+| `/admin/crm/contacts/:uuid`                  | `PhoenixKitCRM.Web.ContactShowLive` |
+| `/admin/crm/companies`                       | `PhoenixKitCRM.Web.CompaniesLive` |
+| `/admin/crm/companies/new` · `/:uuid/edit`   | `PhoenixKitCRM.Web.CompanyFormLive` |
+| `/admin/crm/companies/:uuid`                 | `PhoenixKitCRM.Web.CompanyShowLive` |
+| `/admin/crm/organizations`                   | `PhoenixKitCRM.Web.OrganizationsView` |
+| `/admin/crm/role/:role_uuid`                 | `PhoenixKitCRM.Web.RoleView`      |
+| `/admin/settings/crm`                        | `PhoenixKitCRM.Web.SettingsLive`  |
 
-The `Companies` and per-role routes are gated by settings — the section
-appears only after it's toggled on under **Admin > Settings > CRM**.
+The CRM section appears only after the module is toggled on under **Admin > Settings > CRM**; per-role subtabs appear for each opted-in role.
 
 ## Database
 
-Two module-owned tables are required:
+The module's tables live in `phoenix_kit` **core** (the CRM tables migration), per the PhoenixKit convention — not in this repo:
 
+- `phoenix_kit_crm_contacts`, `phoenix_kit_crm_companies`, `phoenix_kit_crm_company_memberships` — the people, legal entities, and their associations
+- `phoenix_kit_crm_interactions`, `phoenix_kit_crm_interaction_parties` — logged interactions + their involved parties
 - `phoenix_kit_crm_role_settings` — which roles have CRM access enabled
 - `phoenix_kit_crm_user_role_view` — per-user, per-scope view configuration
 
-Following the PhoenixKit convention, **migrations live in `phoenix_kit`
-core**, not in this repo. The parent app applies them via
-`mix phoenix_kit.install` / `mix phoenix_kit.update`.
+The parent app applies them via `mix phoenix_kit.install` / `mix phoenix_kit.update`.
 
 ## Settings keys
 
 - `crm_enabled` — module on/off (also reflected on the Modules page)
-- `crm_companies_enabled` — Companies subtab visibility
 
 ## Development
 
@@ -71,8 +76,17 @@ For integration tests, create the test database once:
 
 ```sh
 createdb phoenix_kit_crm_test
-mix test.setup      # ecto.create + ecto.migrate against the test repo
 ```
+
+The CRM's tables migration ships in `phoenix_kit` core. Until that core release is
+published, run the suite against a **local core checkout** so the test DB migrates
+to the version that has the CRM tables:
+
+```sh
+PHOENIX_KIT_PATH=../phoenix_kit mix test
+```
+
+With `PHOENIX_KIT_PATH` unset, the published Hex pin is used (publish/CI-safe).
 
 See [`AGENTS.md`](AGENTS.md) for the development conventions, file layout,
 and testing setup.
