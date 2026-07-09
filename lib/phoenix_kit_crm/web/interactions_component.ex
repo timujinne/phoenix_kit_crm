@@ -719,7 +719,6 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
               <.search_picker
                 id="crm-party-search"
                 dropdown_id="crm-party-dropdown"
-                target={"##{@id}"}
                 search_event="search_party"
                 results_event="crm_party_results"
                 pick_event="stage_party"
