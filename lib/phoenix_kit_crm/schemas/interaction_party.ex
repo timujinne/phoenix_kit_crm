@@ -15,6 +15,7 @@ defmodule PhoenixKitCRM.Schemas.InteractionParty do
   """
 
   use Ecto.Schema
+  use PhoenixKit.SchemaPrefix
   import Ecto.Changeset
 
   alias PhoenixKitCRM.Schemas.{Contact, Interaction}
