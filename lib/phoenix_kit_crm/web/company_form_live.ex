@@ -5,8 +5,11 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
 
   require Logger
 
+  import PhoenixKitCRM.Web.PartyRoleHelpers,
+    only: [active_role_values: 1, role_label: 1, selected_roles: 1, sync_roles: 2]
+
   alias PhoenixKitCRM.{Activity, Companies, Paths}
-  alias PhoenixKitCRM.Schemas.Company
+  alias PhoenixKitCRM.Schemas.{Company, PartyRole}
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -33,25 +36,32 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   end
 
   defp assign_form(socket, company, title) do
+    roles_selected = if company.uuid, do: active_role_values(company), else: []
+
     socket
     |> assign(:company, company)
     |> assign(:page_title, title)
+    |> assign(:roles_selected, roles_selected)
     |> assign(:form, to_form(Companies.change_company(company)))
   end
 
   @impl true
-  def handle_event("validate", %{"company" => params}, socket) do
+  def handle_event("validate", %{"company" => params} = payload, socket) do
     changeset =
       socket.assigns.company
       |> Companies.change_company(safe_map(params))
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply,
+     socket
+     |> assign(:roles_selected, selected_roles(payload))
+     |> assign(:form, to_form(changeset))}
   end
 
-  def handle_event("save", %{"company" => params}, socket) do
+  def handle_event("save", %{"company" => params} = payload, socket) do
     # Normalize once so a forged non-map payload can't raise here OR in the rescue.
     params = safe_map(params)
+    socket = assign(socket, :roles_selected, selected_roles(payload))
     save(socket, socket.assigns.live_action, params)
   rescue
     e ->
@@ -82,6 +92,8 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :new, params) do
     case Companies.create_company(params) do
       {:ok, company} ->
+        sync_roles(company, socket.assigns.roles_selected)
+
         Activity.log(
           "crm.company_created",
           Activity.actor_opts(socket) ++
@@ -101,6 +113,8 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :edit, params) do
     case Companies.update_company(socket.assigns.company, params) do
       {:ok, company} ->
+        sync_roles(company, socket.assigns.roles_selected)
+
         Activity.log(
           "crm.company_updated",
           Activity.actor_opts(socket) ++
@@ -139,6 +153,22 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
             <.input field={@form[:industry]} label={gettext("Industry")} />
             <.textarea field={@form[:address]} label={gettext("Address")} />
             <.textarea field={@form[:notes]} label={gettext("Notes")} />
+
+            <div class="divider my-1 text-sm font-semibold text-base-content/60">
+              {gettext("Commercial roles")}
+            </div>
+            <div class="flex flex-wrap gap-4">
+              <label :for={role <- PartyRole.roles()} class="label cursor-pointer gap-2">
+                <input
+                  type="checkbox"
+                  name="roles[]"
+                  value={role}
+                  checked={role in @roles_selected}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="label-text">{role_label(role)}</span>
+              </label>
+            </div>
 
             <div class="divider my-0"></div>
             <div class="flex justify-end gap-2">

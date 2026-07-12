@@ -3,8 +3,12 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitCRM.Gettext
 
-  alias PhoenixKitCRM.{Activity, Companies, Paths}
+  import PhoenixKitCRM.Web.PartyRoleHelpers, only: [role_label: 1, role_badge_class: 1]
+
+  alias PhoenixKitCRM.{Activity, Companies, PartyRoles, Paths}
   alias PhoenixKitCRM.Schemas.Company
+
+  @role_filters ~w(supplier client)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,21 +17,33 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
        page_title: gettext("CRM — Companies"),
        filter: "active",
        companies: [],
+       roles_map: %{},
        trashed_count: 0
      )}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    filter = if params["filter"] == "trashed", do: "trashed", else: "active"
+    filter =
+      case params["filter"] do
+        f when f == "trashed" or f in @role_filters -> f
+        _ -> "active"
+      end
+
     {:noreply, socket |> assign(:filter, filter) |> load()}
   end
 
   defp load(socket) do
-    opts = if socket.assigns.filter == "trashed", do: [status: "trashed"], else: []
+    companies =
+      case socket.assigns.filter do
+        "trashed" -> Companies.list_companies(status: "trashed")
+        role when role in @role_filters -> PartyRoles.list_companies_with_role(role)
+        _ -> Companies.list_companies([])
+      end
 
     socket
-    |> assign(:companies, Companies.list_companies(opts))
+    |> assign(:companies, companies)
+    |> assign(:roles_map, PartyRoles.active_roles_map("company", Enum.map(companies, & &1.uuid)))
     |> assign(:trashed_count, Companies.count_companies(status: "trashed"))
   end
 
@@ -85,15 +101,22 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         </.link>
       </div>
 
-      <div
-        :if={@trashed_count > 0 or @filter == "trashed"}
-        role="tablist"
-        class="tabs tabs-bordered"
-      >
+      <div role="tablist" class="tabs tabs-bordered">
         <.link patch={Paths.companies()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
           {gettext("Active")}
         </.link>
-        <.link patch={Paths.companies() <> "?filter=trashed"} role="tab" class={["tab", @filter == "trashed" && "tab-active"]}>
+        <.link patch={Paths.companies() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
+          {gettext("Suppliers")}
+        </.link>
+        <.link patch={Paths.companies() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
+          {gettext("Clients")}
+        </.link>
+        <.link
+          :if={@trashed_count > 0 or @filter == "trashed"}
+          patch={Paths.companies() <> "?filter=trashed"}
+          role="tab"
+          class={["tab", @filter == "trashed" && "tab-active"]}
+        >
           {trashed_tab_label(@trashed_count)}
         </.link>
       </div>
@@ -122,6 +145,9 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
               <.link navigate={Paths.company(c.uuid)} class="link link-hover">
                 {Company.display_name(c)}
               </.link>
+              <span :for={role <- Map.get(@roles_map, c.uuid, [])} class={["badge badge-sm ml-1", role_badge_class(role)]}>
+                {role_label(role)}
+              </span>
             </.table_default_cell>
             <.table_default_cell class="text-base-content/70">{c.industry || "—"}</.table_default_cell>
             <.table_default_cell><.status_badge status={c.status} size={:sm} /></.table_default_cell>

@@ -160,6 +160,25 @@ defmodule PhoenixKitCRM.PartyRoles do
     |> repo().all()
   end
 
+  @doc """
+  Active roles for a batch of companies/contacts in one query — for role
+  badges on list pages. Returns `%{roleable_uuid => [role, ...]}` (uuids
+  with no active roles are absent).
+  """
+  @spec active_roles_map(String.t(), [UUIDv7.t()]) :: %{UUIDv7.t() => [String.t()]}
+  def active_roles_map(_type, []), do: %{}
+
+  def active_roles_map(type, uuids) when is_list(uuids) do
+    PartyRole
+    |> where(
+      [pr],
+      pr.roleable_type == ^type and pr.roleable_uuid in ^uuids and pr.is_active == true
+    )
+    |> select([pr], {pr.roleable_uuid, pr.role})
+    |> repo().all()
+    |> Enum.group_by(fn {uuid, _} -> uuid end, fn {_, role} -> role end)
+  end
+
   defp roleable_uuids(type, role, opts) do
     PartyRole
     |> where([pr], pr.roleable_type == ^type and pr.role == ^role)
