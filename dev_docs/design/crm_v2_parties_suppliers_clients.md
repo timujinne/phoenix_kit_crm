@@ -43,7 +43,7 @@
 - **Full procurement chain already works:** internal order → `SupplierOrders.generate_from_internal_order/2` (one draft PO per resolved supplier) → goods receipt → `StockLedger.receive_quantity/3`.
 - `supplier_orders.supplier_uuid` and `goods_receipts.supplier_uuid` are **soft UUIDs resolved only through Catalogue** (`supplier_orders.ex:559-561, 647-661`): item's `primary_supplier_uuid` wins, else manufacturer's linked suppliers. **Zero references to CRM.**
 - No customer entity; outbound host orders plug in via `source_refs` JSONB + the `SourceKinds` callback registry (`source_kinds.ex`) — the module degrades gracefully with none configured.
-- **⚠️ Gap (Phase 0):** the module ships **no migrations** (`migration_module/0` not implemented) — its six tables cannot be created reproducibly. Blocks everything downstream.
+- **⚠️ Gap (Phase 0):** no core migration creates the six warehouse tables yet. Per the ecosystem convention (all DDL ships in core `phoenix_kit` migrations — CRM V138, catalogue V87), a core migration for the warehouse tables must land before any warehouse integration ships. Blocks everything downstream.
 
 ### 1.4 Who owns what today
 
@@ -204,7 +204,7 @@ Add a periodic consistency-check admin task (orphaned soft UUIDs report) so app-
 
 | Phase | Scope | Repos touched | Risk |
 |---|---|---|---|
-| **0 — Hygiene (blockers)** | (a) Fix `primary_supplier_uuid` skew — skip the scalar, ship the junction (§4.2) and repoint item form; (b) implement warehouse `migration_module/0` so its six tables ship; (c) email normalization on `crm_contacts`/`crm_companies` (citext), per the parallel users-architecture analysis | core, catalogue, warehouse | low |
+| **0 — Hygiene (blockers)** | (a) Fix `primary_supplier_uuid` skew — skip the scalar, ship the junction (§4.2) and repoint item form; (b) core migration creating the six warehouse tables (per the all-DDL-in-core convention); (c) email normalization on `crm_contacts`/`crm_companies` (citext), per the parallel users-architecture analysis | core, catalogue, warehouse | low |
 | **1 — CRM party roles** | V140 table + `PartyRoles` context + roles UI (additive, no cross-module wiring) | core, crm | low |
 | **2 — Supplierinfo + resolver** | V141 junction + `crm_company_uuid` column + `Suppliers` facade federation + item-form UI | core, catalogue | medium (first cross-module resolver — codify ADR + consistency task) |
 | **3 — Backfill (opt-in)** | mix task §4.5; dry-run + report | crm | medium (empty tables today → trivial for us) |
@@ -217,7 +217,7 @@ Add a periodic consistency-check admin task (orphaned soft UUIDs report) so app-
 
 ## 6. Risks & open questions
 
-1. **Warehouse DDL ownership** — must be decided in Phase 0: module-owned `migration_module/0` (recommended, mirrors other modules) vs host-owned.
+1. **Warehouse DDL** — resolved by convention: all module tables ship in core `phoenix_kit` migrations (decision confirmed 2026-07-12). The six warehouse tables need their core migration in Phase 0; the warehouse module's own AGENTS.md still prescribes a `migration_module/0` pattern and should be corrected to match.
 2. **First cross-module resolver in the ecosystem** — without the ADR + consistency task, orphaned soft UUIDs accumulate silently.
 3. **Backfill matching heuristics** — `contact_info` free text makes email/website matching fuzzy; dry-run report is mandatory. (Moot while tables are empty.)
 4. **Contact-centric interactions** — supplier companies can't be interaction subjects until Phase 5; acceptable interim (company pages stay rollups).
