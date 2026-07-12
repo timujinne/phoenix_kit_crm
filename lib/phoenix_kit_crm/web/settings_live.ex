@@ -107,25 +107,17 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
             <div :if={@eligible_roles == []} class="text-base-content/50 text-sm">
               {gettext("No eligible roles found.")}
             </div>
-            <label
+            <.checkbox
               :for={role <- @eligible_roles}
-              class="flex items-center justify-between cursor-pointer"
+              name={"role_#{role.uuid}_enabled"}
+              checked={MapSet.member?(@enabled_role_uuids, role.uuid)}
+              label={role.name}
+              phx-click="toggle_role"
+              phx-value-role_uuid={role.uuid}
+              phx-value-value={if MapSet.member?(@enabled_role_uuids, role.uuid), do: "false", else: "true"}
             >
-              <div>
-                <div class="font-medium">{role.name}</div>
-                <div :if={Map.get(role, :description)} class="text-xs text-base-content/60">
-                  {role.description}
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                class="checkbox checkbox-primary"
-                phx-click="toggle_role"
-                phx-value-role_uuid={role.uuid}
-                phx-value-value={if MapSet.member?(@enabled_role_uuids, role.uuid), do: "false", else: "true"}
-                checked={MapSet.member?(@enabled_role_uuids, role.uuid)}
-              />
-            </label>
+              <:description :if={Map.get(role, :description)}>{role.description}</:description>
+            </.checkbox>
           </div>
         </div>
       </div>
