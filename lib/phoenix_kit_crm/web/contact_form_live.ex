@@ -132,10 +132,9 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
     case result do
       {:ok, contact} ->
-        sync_roles(contact, socket.assigns.roles_selected)
-
-        # The contact is saved; the membership + login link are best-effort
-        # (each logs + swallows its own failure, returning :ok | :error).
+        # All three are best-effort secondary ops (each logs + swallows its own
+        # failure). roles returns :ok | {:partial, _}; membership/login :ok | :error.
+        roles = sync_roles(contact, socket.assigns.roles_selected)
         membership = apply_membership(contact, company_uuid, role, dept)
         login = apply_login(contact, allow_login, email, actor_uuid(socket))
 
@@ -145,7 +144,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
             [resource_type: "crm_contact", resource_uuid: contact.uuid]
         )
 
-        if membership == :ok and login == :ok do
+        if membership == :ok and login == :ok and roles == :ok do
           {:noreply,
            socket
            |> put_flash(:info, gettext("Contact saved"))
@@ -159,7 +158,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
            |> put_flash(
              :warning,
              gettext(
-               "Contact saved, but the company or login link couldn't be applied — please re-apply and save."
+               "Contact saved, but the company link, login, or roles couldn't all be applied — please re-check and save."
              )
            )
            |> assign(:contact, contact)

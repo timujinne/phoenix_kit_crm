@@ -79,7 +79,7 @@ defmodule PhoenixKitCRM.PartyRoles do
 
       %PartyRole{} = existing ->
         existing
-        |> PartyRole.changeset(%{"is_active" => false, "valid_to" => Date.utc_today()})
+        |> PartyRole.lifecycle_changeset(%{"is_active" => false, "valid_to" => Date.utc_today()})
         |> repo().update()
         |> log_on_ok("crm.party_role_revoked", type, uuid)
     end
@@ -234,8 +234,15 @@ defmodule PhoenixKitCRM.PartyRoles do
   end
 
   defp active_supplier_role(uuid) do
+    # limit(1): a boundary resolver federating two modules must not raise on a
+    # dirty soft-ref. The unique index is per (roleable_type, roleable_uuid,
+    # role), so the same uuid could in principle hold an active supplier row
+    # under both types (audited soft-ref risk); take one deterministically
+    # rather than let repo().one() raise Ecto.MultipleResultsError.
     PartyRole
     |> where([pr], pr.roleable_uuid == ^uuid and pr.role == "supplier" and pr.is_active == true)
+    |> order_by([pr], asc: pr.inserted_at)
+    |> limit(1)
     |> repo().one()
   end
 

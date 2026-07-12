@@ -78,6 +78,18 @@ defmodule PhoenixKitCRM.Schemas.PartyRole do
     end
   end
 
+  @doc """
+  Changeset for controlled lifecycle transitions (revoke / reactivate) driven
+  by the context, not user input. Deliberately skips `validate_date_range/1`:
+  stamping `valid_to` = today when revoking a role whose `valid_from` is in the
+  future would otherwise fail the ordering check and turn revoke into a silent
+  no-op. Only `is_active` and `valid_to` are castable here.
+  """
+  @spec lifecycle_changeset(t() | Ecto.Changeset.t(t()), map()) :: Ecto.Changeset.t(t())
+  def lifecycle_changeset(party_role, attrs) do
+    cast(party_role, attrs, [:is_active, :valid_to])
+  end
+
   @spec roleable_types() :: [String.t()]
   def roleable_types, do: @roleable_types
 

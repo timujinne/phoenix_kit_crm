@@ -6,6 +6,8 @@ defmodule PhoenixKitCRM.Web.PartyRoleHelpers do
 
   use Gettext, backend: PhoenixKitCRM.Gettext
 
+  require Logger
+
   alias PhoenixKitCRM.PartyRoles
   alias PhoenixKitCRM.Schemas.PartyRole
 
@@ -48,14 +50,39 @@ defmodule PhoenixKitCRM.Web.PartyRoleHelpers do
   Reconciles checkbox state with stored roles: grants what's newly checked,
   revokes active roles that were unchecked. Both operations are idempotent,
   so re-saving an unchanged form is a no-op.
+
+  Returns `:ok` when every role reconciled, or `{:partial, failed_roles}` if
+  one or more grant/revoke calls failed (each is also logged). Callers should
+  surface a warning instead of reporting unqualified success — a checked role
+  that silently didn't apply is a real user-visible correctness gap.
   """
+  @spec sync_roles(struct(), [String.t()]) :: :ok | {:partial, [String.t()]}
   def sync_roles(roleable, selected) when is_list(selected) do
-    Enum.each(PartyRole.roles(), fn role ->
-      cond do
-        role in selected -> PartyRoles.grant_role(roleable, role)
-        PartyRoles.has_role?(roleable, role) -> PartyRoles.revoke_role(roleable, role)
-        true -> :ok
-      end
-    end)
+    failed =
+      Enum.reduce(PartyRole.roles(), [], fn role, failed ->
+        result =
+          cond do
+            role in selected -> PartyRoles.grant_role(roleable, role)
+            PartyRoles.has_role?(roleable, role) -> PartyRoles.revoke_role(roleable, role)
+            true -> :ok
+          end
+
+        case result do
+          :ok ->
+            failed
+
+          {:ok, _} ->
+            failed
+
+          other ->
+            Logger.warning("[CRM] party role sync failed for #{inspect(role)}: #{inspect(other)}")
+            [role | failed]
+        end
+      end)
+
+    case failed do
+      [] -> :ok
+      roles -> {:partial, Enum.reverse(roles)}
+    end
   end
 end

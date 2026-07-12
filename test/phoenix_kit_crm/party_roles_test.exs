@@ -226,4 +226,66 @@ defmodule PhoenixKitCRM.PartyRolesTest do
       assert PartyRoles.get_supplier(nil) == nil
     end
   end
+
+  describe "active_roles_map/2 (list-page badge query)" do
+    test "groups active roles by uuid and omits parties with none" do
+      a = company_fixture(%{"name" => "A"})
+      b = company_fixture(%{"name" => "B"})
+      c = company_fixture(%{"name" => "C"})
+      {:ok, _} = PartyRoles.grant_role(a, "supplier")
+      {:ok, _} = PartyRoles.grant_role(a, "client")
+      {:ok, _} = PartyRoles.grant_role(b, "supplier")
+
+      map = PartyRoles.active_roles_map("company", [a.uuid, b.uuid, c.uuid])
+      assert Enum.sort(map[a.uuid]) == ["client", "supplier"]
+      assert map[b.uuid] == ["supplier"]
+      refute Map.has_key?(map, c.uuid)
+    end
+
+    test "empty uuid list short-circuits to an empty map" do
+      assert PartyRoles.active_roles_map("company", []) == %{}
+    end
+
+    test "omits revoked (inactive) roles" do
+      a = company_fixture()
+      {:ok, _} = PartyRoles.grant_role(a, "supplier")
+      {:ok, _} = PartyRoles.revoke_role(a, "supplier")
+      assert PartyRoles.active_roles_map("company", [a.uuid]) == %{}
+    end
+
+    test "is scoped by roleable_type (same uuid, different type)" do
+      contact = contact_fixture()
+      {:ok, _} = PartyRoles.grant_role(contact, "supplier")
+
+      assert PartyRoles.active_roles_map("company", [contact.uuid]) == %{}
+      assert PartyRoles.active_roles_map("contact", [contact.uuid])[contact.uuid] == ["supplier"]
+    end
+  end
+
+  describe "grant_role/3 attribute safety" do
+    test "a forged metadata attr is not castable and never persists" do
+      company = company_fixture()
+
+      {:ok, role} =
+        PartyRoles.grant_role(company, "supplier", %{"metadata" => %{"injected" => true}})
+
+      assert role.metadata == %{}
+    end
+  end
+
+  describe "sync_roles/2 (form reconciliation)" do
+    alias PhoenixKitCRM.Web.PartyRoleHelpers
+
+    test "grants checked roles, revokes unchecked, returns :ok" do
+      company = company_fixture()
+
+      assert :ok = PartyRoleHelpers.sync_roles(company, ["supplier", "client"])
+      assert PartyRoles.has_role?(company, "supplier")
+      assert PartyRoles.has_role?(company, "client")
+
+      assert :ok = PartyRoleHelpers.sync_roles(company, ["supplier"])
+      assert PartyRoles.has_role?(company, "supplier")
+      refute PartyRoles.has_role?(company, "client")
+    end
+  end
 end

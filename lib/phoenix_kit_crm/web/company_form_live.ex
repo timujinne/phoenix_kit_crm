@@ -92,7 +92,7 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :new, params) do
     case Companies.create_company(params) do
       {:ok, company} ->
-        sync_roles(company, socket.assigns.roles_selected)
+        roles = sync_roles(company, socket.assigns.roles_selected)
 
         Activity.log(
           "crm.company_created",
@@ -100,10 +100,7 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
             [resource_type: "crm_company", resource_uuid: company.uuid]
         )
 
-        {:noreply,
-         socket
-         |> put_flash(:info, gettext("Company created"))
-         |> push_navigate(to: Paths.company(company.uuid))}
+        finish_save(socket, company, roles, gettext("Company created"))
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
@@ -113,7 +110,7 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :edit, params) do
     case Companies.update_company(socket.assigns.company, params) do
       {:ok, company} ->
-        sync_roles(company, socket.assigns.roles_selected)
+        roles = sync_roles(company, socket.assigns.roles_selected)
 
         Activity.log(
           "crm.company_updated",
@@ -121,14 +118,37 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
             [resource_type: "crm_company", resource_uuid: company.uuid]
         )
 
-        {:noreply,
-         socket
-         |> put_flash(:info, gettext("Company updated"))
-         |> push_navigate(to: Paths.company(company.uuid))}
+        finish_save(socket, company, roles, gettext("Company updated"))
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
+  end
+
+  # Roles fully reconciled → flash success and leave.
+  defp finish_save(socket, company, :ok, msg) do
+    {:noreply,
+     socket
+     |> put_flash(:info, msg)
+     |> push_navigate(to: Paths.company(company.uuid))}
+  end
+
+  # A role grant/revoke failed → the company IS saved, but stay on the form
+  # (now editing it) with a warning so the unapplied role isn't lost silently.
+  defp finish_save(socket, company, {:partial, _failed}, _msg) do
+    {:noreply,
+     socket
+     |> put_flash(
+       :warning,
+       gettext(
+         "Company saved, but some commercial roles couldn't be applied — please re-check and save."
+       )
+     )
+     |> assign(:company, company)
+     |> assign(:live_action, :edit)
+     |> assign(:page_title, gettext("Edit company"))
+     |> assign(:roles_selected, active_role_values(company))
+     |> assign(:form, to_form(Companies.change_company(company)))}
   end
 
   @impl true
