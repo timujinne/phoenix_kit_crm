@@ -7,6 +7,7 @@ defmodule PhoenixKitCRM.RoleSetting do
   """
 
   use Ecto.Schema
+  use PhoenixKit.SchemaPrefix
   import Ecto.Changeset
 
   @primary_key {:role_uuid, :binary_id, autogenerate: false}

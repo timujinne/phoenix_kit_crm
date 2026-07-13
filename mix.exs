@@ -72,7 +72,7 @@ defmodule PhoenixKitCRM.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper,
       # Dashboard tabs, and the admin layout this module renders into.
-      pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.184"),
+      pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.189"),
 
       # Hard, compile-time dep for the contact profile's Comments tab
       # (`use PhoenixKitComments.Embed` + CommentsComponent). Runtime-gated on

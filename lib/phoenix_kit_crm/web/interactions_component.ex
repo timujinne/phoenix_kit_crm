@@ -44,7 +44,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
      # by staging a party don't wipe what the user has typed. `c_occurred_at`
      # is the user's LOCAL wall-clock time (in their profile timezone); it's
      # converted to/from UTC at the storage boundary. (The party search box +
-     # dropdown are owned entirely by the PartyPicker JS hook — no server state.)
+     # dropdown are owned entirely by core's SearchPicker JS hook — no server state.)
      |> assign_new(:c_type, fn -> "note" end)
      |> assign_new(:c_subject, fn -> "" end)
      |> assign_new(:c_body, fn -> "" end)
@@ -94,7 +94,7 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
   end
 
   @impl true
-  # The PartyPicker JS hook owns the search box + dropdown entirely (instant,
+  # Core's SearchPicker JS hook owns the search box + dropdown entirely (instant,
   # client-side). It pushes the (client-debounced) query here; we run the DB
   # search and hand rows back to the hook via push_event. No server-side search
   # state is kept.
@@ -435,7 +435,13 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
       query
       |> Contacts.search_contacts(limit + 1, exclude_uuids)
       |> Enum.map(fn c ->
-        %{kind: "contact", uuid: c.uuid, label: Contact.display_name(c), sublabel: c.email || ""}
+        %{
+          kind: "contact",
+          uuid: c.uuid,
+          label: Contact.display_name(c),
+          sublabel: c.email || "",
+          icon: "hero-user"
+        }
       end)
 
     staff = if staff_enabled?, do: staff_results(query, limit + 1), else: []
@@ -448,7 +454,13 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
     query
     |> StaffLink.search(limit)
     |> Enum.map(fn p ->
-      %{kind: "staff", uuid: p.uuid, label: p.name, sublabel: p[:job_title] || gettext("Staff")}
+      %{
+        kind: "staff",
+        uuid: p.uuid,
+        label: p.name,
+        sublabel: p[:job_title] || gettext("Staff"),
+        icon: "hero-identification"
+      }
     end)
   end
 
@@ -701,35 +713,25 @@ defmodule PhoenixKitCRM.Web.InteractionsComponent do
                 </span>
               </div>
 
-              <%!-- Hook-driven typeahead: the dropdown is rendered + toggled
+              <%!-- Core SearchPicker: the dropdown is rendered + toggled
                     entirely client-side (instant); the server (search_party)
                     only returns rows via push_event. --%>
-              <div class="relative">
-                <input
-                  type="text"
-                  id="crm-party-search"
-                  phx-hook="PartyPicker"
-                  data-target={"##{@id}"}
-                  data-dropdown="crm-party-dropdown"
-                  data-t-searching={gettext("Searching…")}
-                  data-t-add-prefix={gettext("Add")}
-                  data-t-add-suffix={gettext("as free text")}
-                  data-t-adding={gettext("Adding…")}
-                  data-t-more={gettext("Load more")}
-                  data-t-loading-more={gettext("Loading…")}
-                  placeholder={gettext("Type a name — searches contacts%{staff}…", staff: if(@staff_enabled, do: gettext(" and staff"), else: ""))}
-                  class="input input-bordered w-full"
-                  autocomplete="off"
-                />
-                <div
-                  id="crm-party-dropdown"
-                  phx-update="ignore"
-                  class="hidden absolute left-0 right-0 z-20 mt-1 border border-base-200 rounded-box bg-base-100 shadow overflow-hidden"
-                >
-                </div>
-              </div>
-              <%!-- Keep the JS-rendered dropdown's classes in the CSS bundle. --%>
-              <span class="hidden loading loading-spinner loading-xs hero-user hero-identification hero-pencil hero-plus-mini"></span>
+              <.search_picker
+                id="crm-party-search"
+                dropdown_id="crm-party-dropdown"
+                search_event="search_party"
+                results_event="crm_party_results"
+                pick_event="stage_party"
+                text_event="stage_text"
+                staged_event="crm_party_staged"
+                searching_label={gettext("Searching…")}
+                add_prefix_label={gettext("Add")}
+                add_suffix_label={gettext("as free text")}
+                adding_label={gettext("Adding…")}
+                more_label={gettext("Load more")}
+                loading_more_label={gettext("Loading…")}
+                placeholder={gettext("Type a name — searches contacts%{staff}…", staff: if(@staff_enabled, do: gettext(" and staff"), else: ""))}
+              />
             </div>
 
           <div :if={@save_error} class="alert alert-error text-sm py-2" role="alert">
