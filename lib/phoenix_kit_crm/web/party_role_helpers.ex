@@ -55,16 +55,26 @@ defmodule PhoenixKitCRM.Web.PartyRoleHelpers do
   one or more grant/revoke calls failed (each is also logged). Callers should
   surface a warning instead of reporting unqualified success — a checked role
   that silently didn't apply is a real user-visible correctness gap.
+
+  Pass the acting user's uuid as `actor_uuid` so grant/revoke activity log
+  entries record who made the change (mirrors every other logged CRM
+  mutation instead of landing with `actor_uuid: nil`).
   """
-  @spec sync_roles(struct(), [String.t()]) :: :ok | {:partial, [String.t()]}
-  def sync_roles(roleable, selected) when is_list(selected) do
+  @spec sync_roles(struct(), [String.t()], UUIDv7.t() | String.t() | nil) ::
+          :ok | {:partial, [String.t()]}
+  def sync_roles(roleable, selected, actor_uuid \\ nil) when is_list(selected) do
     failed =
       Enum.reduce(PartyRole.roles(), [], fn role, failed ->
         result =
           cond do
-            role in selected -> PartyRoles.grant_role(roleable, role)
-            PartyRoles.has_role?(roleable, role) -> PartyRoles.revoke_role(roleable, role)
-            true -> :ok
+            role in selected ->
+              PartyRoles.grant_role(roleable, role, %{}, actor_uuid: actor_uuid)
+
+            PartyRoles.has_role?(roleable, role) ->
+              PartyRoles.revoke_role(roleable, role, actor_uuid: actor_uuid)
+
+            true ->
+              :ok
           end
 
         case result do

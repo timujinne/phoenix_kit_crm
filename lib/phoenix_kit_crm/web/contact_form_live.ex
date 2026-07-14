@@ -10,7 +10,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
   require Logger
 
   import PhoenixKitCRM.Web.PartyRoleHelpers,
-    only: [active_role_values: 1, role_label: 1, selected_roles: 1, sync_roles: 2]
+    only: [active_role_values: 1, role_label: 1, selected_roles: 1, sync_roles: 3]
 
   alias PhoenixKitCRM.{Activity, Companies, Contacts, Paths}
   alias PhoenixKitCRM.Schemas.{Contact, PartyRole}
@@ -134,7 +134,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
       {:ok, contact} ->
         # All three are best-effort secondary ops (each logs + swallows its own
         # failure). roles returns :ok | {:partial, _}; membership/login :ok | :error.
-        roles = sync_roles(contact, socket.assigns.roles_selected)
+        roles = sync_roles(contact, socket.assigns.roles_selected, actor_uuid(socket))
         membership = apply_membership(contact, company_uuid, role, dept)
         login = apply_login(contact, allow_login, email, actor_uuid(socket))
 
@@ -164,6 +164,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
            |> assign(:contact, contact)
            |> assign(:live_action, :edit)
            |> assign(:page_title, gettext("Edit contact"))
+           |> assign(:roles_selected, active_role_values(contact))
            |> restore_form(
              Contacts.change_contact(contact),
              company_uuid,

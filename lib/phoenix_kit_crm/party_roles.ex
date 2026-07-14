@@ -26,10 +26,13 @@ defmodule PhoenixKitCRM.PartyRoles do
   role is a no-op (returns the existing row); granting a previously-revoked
   role reactivates it (clears `valid_to`). `attrs` may set `:valid_from` /
   `:valid_to` — never pass caller-supplied `metadata` here from a UI path.
+
+  Pass `:actor_uuid` in `opts` so the activity log entry records who granted
+  the role (mirrors every other logged CRM mutation).
   """
-  @spec grant_role(Company.t() | Contact.t(), String.t(), map()) ::
+  @spec grant_role(Company.t() | Contact.t(), String.t(), map(), keyword()) ::
           {:ok, PartyRole.t()} | {:error, Ecto.Changeset.t()}
-  def grant_role(roleable, role, attrs \\ %{}) do
+  def grant_role(roleable, role, attrs \\ %{}, opts \\ []) do
     type = roleable_type(roleable)
     uuid = roleable.uuid
     attrs = stringify_keys(attrs)
@@ -45,7 +48,7 @@ defmodule PhoenixKitCRM.PartyRoles do
           })
         )
         |> repo().insert()
-        |> log_on_ok("crm.party_role_granted", type, uuid)
+        |> log_on_ok("crm.party_role_granted", type, uuid, opts)
 
       %PartyRole{is_active: true} = existing ->
         {:ok, existing}
@@ -54,7 +57,7 @@ defmodule PhoenixKitCRM.PartyRoles do
         existing
         |> PartyRole.changeset(Map.merge(attrs, %{"is_active" => true, "valid_to" => nil}))
         |> repo().update()
-        |> log_on_ok("crm.party_role_granted", type, uuid)
+        |> log_on_ok("crm.party_role_granted", type, uuid, opts)
     end
   end
 
@@ -63,10 +66,13 @@ defmodule PhoenixKitCRM.PartyRoles do
   `valid_to` with today's date. Never deletes the row (role history is kept).
   A no-op if the role isn't currently held (returns `{:error, :not_found}`) or
   is already inactive.
+
+  Pass `:actor_uuid` in `opts` so the activity log entry records who revoked
+  the role (mirrors every other logged CRM mutation).
   """
-  @spec revoke_role(Company.t() | Contact.t(), String.t()) ::
+  @spec revoke_role(Company.t() | Contact.t(), String.t(), keyword()) ::
           {:ok, PartyRole.t()} | {:error, :not_found | Ecto.Changeset.t()}
-  def revoke_role(roleable, role) do
+  def revoke_role(roleable, role, opts \\ []) do
     type = roleable_type(roleable)
     uuid = roleable.uuid
 
@@ -81,12 +87,19 @@ defmodule PhoenixKitCRM.PartyRoles do
         existing
         |> PartyRole.lifecycle_changeset(%{"is_active" => false, "valid_to" => Date.utc_today()})
         |> repo().update()
-        |> log_on_ok("crm.party_role_revoked", type, uuid)
+        |> log_on_ok("crm.party_role_revoked", type, uuid, opts)
     end
   end
 
-  defp log_on_ok({:ok, %PartyRole{} = party_role} = ok, action, roleable_type, roleable_uuid) do
+  defp log_on_ok(
+         {:ok, %PartyRole{} = party_role} = ok,
+         action,
+         roleable_type,
+         roleable_uuid,
+         opts
+       ) do
     Activity.log(action,
+      actor_uuid: Keyword.get(opts, :actor_uuid),
       resource_type: resource_type(roleable_type),
       resource_uuid: roleable_uuid,
       metadata: %{"role" => party_role.role, "roleable_type" => roleable_type}
@@ -95,7 +108,7 @@ defmodule PhoenixKitCRM.PartyRoles do
     ok
   end
 
-  defp log_on_ok(error, _action, _type, _uuid), do: error
+  defp log_on_ok(error, _action, _type, _uuid, _opts), do: error
 
   defp resource_type("company"), do: "crm_company"
   defp resource_type("contact"), do: "crm_contact"

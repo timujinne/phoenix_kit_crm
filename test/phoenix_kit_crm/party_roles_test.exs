@@ -1,6 +1,8 @@
 defmodule PhoenixKitCRM.PartyRolesTest do
   use PhoenixKitCRM.DataCase, async: true
 
+  import PhoenixKitCRM.ActivityLogAssertions
+
   alias PhoenixKitCRM.{Companies, Contacts, PartyRoles}
   alias PhoenixKitCRM.Schemas.PartyRole
 
@@ -87,6 +89,31 @@ defmodule PhoenixKitCRM.PartyRolesTest do
 
       assert cs.errors[:valid_to]
     end
+
+    test "logs the granting activity with the given actor_uuid" do
+      company = company_fixture()
+      actor_uuid = Ecto.UUID.generate()
+
+      assert {:ok, _} = PartyRoles.grant_role(company, "supplier", %{}, actor_uuid: actor_uuid)
+
+      assert_activity_logged("crm.party_role_granted",
+        resource_uuid: company.uuid,
+        actor_uuid: actor_uuid
+      )
+    end
+
+    test "an idempotent re-grant of an already-active role does not log again" do
+      company = company_fixture()
+      actor_uuid = Ecto.UUID.generate()
+      {:ok, _} = PartyRoles.grant_role(company, "supplier", %{}, actor_uuid: actor_uuid)
+
+      assert {:ok, _} = PartyRoles.grant_role(company, "supplier")
+
+      assert_activity_logged("crm.party_role_granted",
+        resource_uuid: company.uuid,
+        actor_uuid: actor_uuid
+      )
+    end
   end
 
   describe "revoke_role/2" do
@@ -113,6 +140,19 @@ defmodule PhoenixKitCRM.PartyRolesTest do
       assert {:ok, still_revoked} = PartyRoles.revoke_role(company, "client")
       assert still_revoked.uuid == revoked.uuid
       refute still_revoked.is_active
+    end
+
+    test "logs the revoking activity with the given actor_uuid" do
+      company = company_fixture()
+      actor_uuid = Ecto.UUID.generate()
+      {:ok, _} = PartyRoles.grant_role(company, "supplier")
+
+      assert {:ok, _} = PartyRoles.revoke_role(company, "supplier", actor_uuid: actor_uuid)
+
+      assert_activity_logged("crm.party_role_revoked",
+        resource_uuid: company.uuid,
+        actor_uuid: actor_uuid
+      )
     end
   end
 
@@ -286,6 +326,26 @@ defmodule PhoenixKitCRM.PartyRolesTest do
       assert :ok = PartyRoleHelpers.sync_roles(company, ["supplier"])
       assert PartyRoles.has_role?(company, "supplier")
       refute PartyRoles.has_role?(company, "client")
+    end
+
+    test "threads actor_uuid into both the grant and the revoke activity log entries" do
+      company = company_fixture()
+      actor_uuid = Ecto.UUID.generate()
+
+      assert :ok = PartyRoleHelpers.sync_roles(company, ["supplier", "client"], actor_uuid)
+      assert :ok = PartyRoleHelpers.sync_roles(company, ["supplier"], actor_uuid)
+
+      assert_activity_logged("crm.party_role_granted",
+        resource_uuid: company.uuid,
+        actor_uuid: actor_uuid,
+        metadata_has: %{"role" => "supplier"}
+      )
+
+      assert_activity_logged("crm.party_role_revoked",
+        resource_uuid: company.uuid,
+        actor_uuid: actor_uuid,
+        metadata_has: %{"role" => "client"}
+      )
     end
   end
 end
