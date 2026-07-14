@@ -3,8 +3,12 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitCRM.Gettext
 
-  alias PhoenixKitCRM.{Activity, Contacts, Paths}
+  import PhoenixKitCRM.Web.PartyRoleHelpers, only: [role_label: 1, role_badge_class: 1]
+
+  alias PhoenixKitCRM.{Activity, Contacts, PartyRoles, Paths}
   alias PhoenixKitCRM.Schemas.Contact
+
+  @role_filters ~w(supplier client)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,21 +17,33 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
        page_title: gettext("CRM — Contacts"),
        filter: "active",
        contacts: [],
+       roles_map: %{},
        trashed_count: 0
      )}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    filter = if params["filter"] == "trashed", do: "trashed", else: "active"
+    filter =
+      case params["filter"] do
+        f when f == "trashed" or f in @role_filters -> f
+        _ -> "active"
+      end
+
     {:noreply, socket |> assign(:filter, filter) |> load()}
   end
 
   defp load(socket) do
-    opts = if socket.assigns.filter == "trashed", do: [status: "trashed"], else: []
+    contacts =
+      case socket.assigns.filter do
+        "trashed" -> Contacts.list_contacts(status: "trashed")
+        role when role in @role_filters -> PartyRoles.list_contacts_with_role(role)
+        _ -> Contacts.list_contacts([])
+      end
 
     socket
-    |> assign(:contacts, Contacts.list_contacts(opts))
+    |> assign(:contacts, contacts)
+    |> assign(:roles_map, PartyRoles.active_roles_map("contact", Enum.map(contacts, & &1.uuid)))
     |> assign(:trashed_count, Contacts.count_contacts(status: "trashed"))
   end
 
@@ -82,15 +98,22 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         </.link>
       </div>
 
-      <div
-        :if={@trashed_count > 0 or @filter == "trashed"}
-        role="tablist"
-        class="tabs tabs-bordered"
-      >
+      <div role="tablist" class="tabs tabs-bordered">
         <.link patch={Paths.contacts()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
           {gettext("Active")}
         </.link>
-        <.link patch={Paths.contacts() <> "?filter=trashed"} role="tab" class={["tab", @filter == "trashed" && "tab-active"]}>
+        <.link patch={Paths.contacts() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
+          {gettext("Suppliers")}
+        </.link>
+        <.link patch={Paths.contacts() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
+          {gettext("Clients")}
+        </.link>
+        <.link
+          :if={@trashed_count > 0 or @filter == "trashed"}
+          patch={Paths.contacts() <> "?filter=trashed"}
+          role="tab"
+          class={["tab", @filter == "trashed" && "tab-active"]}
+        >
           {trashed_tab_label(@trashed_count)}
         </.link>
       </div>
@@ -121,6 +144,9 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
               <.link navigate={Paths.contact(c.uuid)} class="link link-hover">
                 {Contact.display_name(c)}
               </.link>
+              <span :for={role <- Map.get(@roles_map, c.uuid, [])} class={["badge badge-sm ml-1", role_badge_class(role)]}>
+                {role_label(role)}
+              </span>
             </.table_default_cell>
             <.table_default_cell class="text-base-content/70">
               <.company_cell contact={c} />

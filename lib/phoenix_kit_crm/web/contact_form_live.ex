@@ -9,8 +9,11 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
   require Logger
 
+  import PhoenixKitCRM.Web.PartyRoleHelpers,
+    only: [active_role_values: 1, role_label: 1, selected_roles: 1, sync_roles: 2]
+
   alias PhoenixKitCRM.{Activity, Companies, Contacts, Paths}
-  alias PhoenixKitCRM.Schemas.Contact
+  alias PhoenixKitCRM.Schemas.{Contact, PartyRole}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -48,6 +51,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     |> assign(:company_uuid, nil)
     |> assign(:role_in_company, "")
     |> assign(:department, "")
+    |> assign(:roles_selected, [])
     |> assign(:allow_login, false)
   end
 
@@ -62,6 +66,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
     |> assign(:company_uuid, membership && membership.company_uuid)
     |> assign(:role_in_company, (membership && membership.role_in_company) || "")
     |> assign(:department, (membership && membership.department) || "")
+    |> assign(:roles_selected, active_role_values(contact))
     |> assign(:allow_login, not is_nil(contact.user_uuid))
   end
 
@@ -80,10 +85,12 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
      |> assign(:company_uuid, blank_to_nil(params["company_uuid"]))
      |> assign(:role_in_company, safe_text(params["role_in_company"]))
      |> assign(:department, safe_text(params["department"]))
+     |> assign(:roles_selected, selected_roles(params))
      |> assign(:allow_login, params["allow_login"] == "true")}
   end
 
   def handle_event("save", params, socket) do
+    socket = assign(socket, :roles_selected, selected_roles(params))
     contact_params = safe_map(params["contact"])
     company_uuid = blank_to_nil(params["company_uuid"])
     role = safe_text(params["role_in_company"])
@@ -125,8 +132,9 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
     case result do
       {:ok, contact} ->
-        # The contact is saved; the membership + login link are best-effort
-        # (each logs + swallows its own failure, returning :ok | :error).
+        # All three are best-effort secondary ops (each logs + swallows its own
+        # failure). roles returns :ok | {:partial, _}; membership/login :ok | :error.
+        roles = sync_roles(contact, socket.assigns.roles_selected)
         membership = apply_membership(contact, company_uuid, role, dept)
         login = apply_login(contact, allow_login, email, actor_uuid(socket))
 
@@ -136,7 +144,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
             [resource_type: "crm_contact", resource_uuid: contact.uuid]
         )
 
-        if membership == :ok and login == :ok do
+        if membership == :ok and login == :ok and roles == :ok do
           {:noreply,
            socket
            |> put_flash(:info, gettext("Contact saved"))
@@ -150,7 +158,7 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
            |> put_flash(
              :warning,
              gettext(
-               "Contact saved, but the company or login link couldn't be applied — please re-apply and save."
+               "Contact saved, but the company link, login, or roles couldn't all be applied — please re-check and save."
              )
            )
            |> assign(:contact, contact)
@@ -318,6 +326,23 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
 
             <.input id="contact-role" name="role_in_company" value={@role_in_company} label={gettext("Role in company")} />
             <.input id="contact-department" name="department" value={@department} label={gettext("Department / team")} />
+
+            <div class="divider my-1 text-sm font-semibold text-base-content/60">
+              {gettext("Commercial roles")}
+            </div>
+
+            <div class="flex flex-wrap gap-4">
+              <label :for={role <- PartyRole.roles()} class="label cursor-pointer gap-2">
+                <input
+                  type="checkbox"
+                  name="roles[]"
+                  value={role}
+                  checked={role in @roles_selected}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="label-text">{role_label(role)}</span>
+              </label>
+            </div>
 
             <div class="divider my-1 text-sm font-semibold text-base-content/60">
               {gettext("Login")}

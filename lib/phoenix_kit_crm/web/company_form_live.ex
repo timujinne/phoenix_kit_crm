@@ -5,8 +5,11 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
 
   require Logger
 
+  import PhoenixKitCRM.Web.PartyRoleHelpers,
+    only: [active_role_values: 1, role_label: 1, selected_roles: 1, sync_roles: 2]
+
   alias PhoenixKitCRM.{Activity, Companies, Paths}
-  alias PhoenixKitCRM.Schemas.Company
+  alias PhoenixKitCRM.Schemas.{Company, PartyRole}
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -33,25 +36,32 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   end
 
   defp assign_form(socket, company, title) do
+    roles_selected = if company.uuid, do: active_role_values(company), else: []
+
     socket
     |> assign(:company, company)
     |> assign(:page_title, title)
+    |> assign(:roles_selected, roles_selected)
     |> assign(:form, to_form(Companies.change_company(company)))
   end
 
   @impl true
-  def handle_event("validate", %{"company" => params}, socket) do
+  def handle_event("validate", %{"company" => params} = payload, socket) do
     changeset =
       socket.assigns.company
       |> Companies.change_company(safe_map(params))
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply,
+     socket
+     |> assign(:roles_selected, selected_roles(payload))
+     |> assign(:form, to_form(changeset))}
   end
 
-  def handle_event("save", %{"company" => params}, socket) do
+  def handle_event("save", %{"company" => params} = payload, socket) do
     # Normalize once so a forged non-map payload can't raise here OR in the rescue.
     params = safe_map(params)
+    socket = assign(socket, :roles_selected, selected_roles(payload))
     save(socket, socket.assigns.live_action, params)
   rescue
     e ->
@@ -82,16 +92,15 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :new, params) do
     case Companies.create_company(params) do
       {:ok, company} ->
+        roles = sync_roles(company, socket.assigns.roles_selected)
+
         Activity.log(
           "crm.company_created",
           Activity.actor_opts(socket) ++
             [resource_type: "crm_company", resource_uuid: company.uuid]
         )
 
-        {:noreply,
-         socket
-         |> put_flash(:info, gettext("Company created"))
-         |> push_navigate(to: Paths.company(company.uuid))}
+        finish_save(socket, company, roles, gettext("Company created"))
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
@@ -101,20 +110,45 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
   defp save(socket, :edit, params) do
     case Companies.update_company(socket.assigns.company, params) do
       {:ok, company} ->
+        roles = sync_roles(company, socket.assigns.roles_selected)
+
         Activity.log(
           "crm.company_updated",
           Activity.actor_opts(socket) ++
             [resource_type: "crm_company", resource_uuid: company.uuid]
         )
 
-        {:noreply,
-         socket
-         |> put_flash(:info, gettext("Company updated"))
-         |> push_navigate(to: Paths.company(company.uuid))}
+        finish_save(socket, company, roles, gettext("Company updated"))
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
+  end
+
+  # Roles fully reconciled → flash success and leave.
+  defp finish_save(socket, company, :ok, msg) do
+    {:noreply,
+     socket
+     |> put_flash(:info, msg)
+     |> push_navigate(to: Paths.company(company.uuid))}
+  end
+
+  # A role grant/revoke failed → the company IS saved, but stay on the form
+  # (now editing it) with a warning so the unapplied role isn't lost silently.
+  defp finish_save(socket, company, {:partial, _failed}, _msg) do
+    {:noreply,
+     socket
+     |> put_flash(
+       :warning,
+       gettext(
+         "Company saved, but some commercial roles couldn't be applied — please re-check and save."
+       )
+     )
+     |> assign(:company, company)
+     |> assign(:live_action, :edit)
+     |> assign(:page_title, gettext("Edit company"))
+     |> assign(:roles_selected, active_role_values(company))
+     |> assign(:form, to_form(Companies.change_company(company)))}
   end
 
   @impl true
@@ -139,6 +173,22 @@ defmodule PhoenixKitCRM.Web.CompanyFormLive do
             <.input field={@form[:industry]} label={gettext("Industry")} />
             <.textarea field={@form[:address]} label={gettext("Address")} />
             <.textarea field={@form[:notes]} label={gettext("Notes")} />
+
+            <div class="divider my-1 text-sm font-semibold text-base-content/60">
+              {gettext("Commercial roles")}
+            </div>
+            <div class="flex flex-wrap gap-4">
+              <label :for={role <- PartyRole.roles()} class="label cursor-pointer gap-2">
+                <input
+                  type="checkbox"
+                  name="roles[]"
+                  value={role}
+                  checked={role in @roles_selected}
+                  class="checkbox checkbox-sm"
+                />
+                <span class="label-text">{role_label(role)}</span>
+              </label>
+            </div>
 
             <div class="divider my-0"></div>
             <div class="flex justify-end gap-2">
