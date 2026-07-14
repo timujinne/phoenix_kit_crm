@@ -5,6 +5,7 @@ defmodule PhoenixKitCRM.Schemas.Company do
   """
 
   use Ecto.Schema
+  use PhoenixKit.SchemaPrefix
   import Ecto.Changeset
 
   alias PhoenixKitCRM.Schemas.CompanyMembership

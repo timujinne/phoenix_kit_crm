@@ -6,6 +6,7 @@ defmodule PhoenixKitCRM.Schemas.Interaction do
   """
 
   use Ecto.Schema
+  use PhoenixKit.SchemaPrefix
   use Gettext, backend: PhoenixKitCRM.Gettext
   import Ecto.Changeset
 
