@@ -64,7 +64,7 @@ defmodule PhoenixKitCRM.Web.SettingsLive do
         <div class="card-body">
           <h2 class="card-title text-2xl">
             <.icon name="hero-cog-6-tooth" class="w-6 h-6" />
-            {gettext("CRM settings")}
+            {gettext("General")}
           </h2>
           <p class="text-base-content/70 text-sm">
             {gettext("Module-specific configuration will appear here as the CRM grows.")}

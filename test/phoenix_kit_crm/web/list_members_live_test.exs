@@ -42,6 +42,18 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
     assert html =~ "Alice Wonder"
   end
 
+  test "the list name lives in the chrome assign, not a duplicate in-body heading",
+       %{conn: conn} do
+    list = list_fixture(%{"name" => "Beta Testers"})
+
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+    assert html =~ ~s(id="test-page-title")
+    refute html =~ "<h1"
+    refute has_element?(view, "h1")
+    assert has_element?(view, ~s{a[href="/en/admin/crm/lists"]}, "Lists")
+  end
+
   test "adding a new contact by email creates a contact + membership and logs the actor",
        %{conn: conn, scope: scope} do
     list = list_fixture()

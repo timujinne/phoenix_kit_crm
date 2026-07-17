@@ -90,31 +90,28 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <h1 class="text-2xl font-bold flex items-center gap-2">
-          <.icon name="hero-user" class="w-6 h-6" /> {gettext("Contacts")}
-        </h1>
+        <div role="tablist" class="tabs tabs-bordered">
+          <.link patch={Paths.contacts()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
+            {gettext("Active")}
+          </.link>
+          <.link patch={Paths.contacts() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
+            {gettext("Suppliers")}
+          </.link>
+          <.link patch={Paths.contacts() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
+            {gettext("Clients")}
+          </.link>
+          <.link
+            :if={@trashed_count > 0 or @filter == "trashed"}
+            patch={Paths.contacts() <> "?filter=trashed"}
+            role="tab"
+            class={["tab", @filter == "trashed" && "tab-active"]}
+          >
+            {trashed_tab_label(@trashed_count)}
+          </.link>
+        </div>
+
         <.link navigate={Paths.contact_new()} class="btn btn-primary btn-sm">
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New contact")}
-        </.link>
-      </div>
-
-      <div role="tablist" class="tabs tabs-bordered">
-        <.link patch={Paths.contacts()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
-          {gettext("Active")}
-        </.link>
-        <.link patch={Paths.contacts() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
-          {gettext("Suppliers")}
-        </.link>
-        <.link patch={Paths.contacts() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
-          {gettext("Clients")}
-        </.link>
-        <.link
-          :if={@trashed_count > 0 or @filter == "trashed"}
-          patch={Paths.contacts() <> "?filter=trashed"}
-          role="tab"
-          class={["tab", @filter == "trashed" && "tab-active"]}
-        >
-          {trashed_tab_label(@trashed_count)}
         </.link>
       </div>
 
@@ -123,7 +120,11 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         icon="hero-user"
         title={gettext("No contacts yet.")}
         variant="card"
-      />
+      >
+        <.link navigate={Paths.contact_new()} class="btn btn-primary">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Create first contact")}
+        </.link>
+      </.empty_state>
 
       <.table_default :if={@contacts != []} id="crm-contacts-list" size="sm">
         <.table_default_header>

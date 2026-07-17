@@ -290,12 +290,9 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
   def render(assigns) do
     ~H"""
     <div class="container flex-col mx-auto px-4 py-6 max-w-2xl">
-      <header class="mb-6">
-        <.link navigate={Paths.contacts()} class="btn btn-ghost btn-sm mb-3">
-          <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Contacts")}
-        </.link>
-        <h1 class="text-2xl sm:text-3xl font-bold">{@page_title}</h1>
-      </header>
+      <.link navigate={Paths.contacts()} class="btn btn-ghost btn-sm mb-3">
+        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Contacts")}
+      </.link>
 
       <.form for={@form} phx-change="validate" phx-submit="save">
         <div class="card bg-base-100 shadow-sm">

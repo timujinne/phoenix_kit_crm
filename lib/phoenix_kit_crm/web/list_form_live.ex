@@ -101,7 +101,9 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
   def render(assigns) do
     ~H"""
     <div class="container flex-col mx-auto px-4 py-6 max-w-2xl">
-      <.admin_page_header back={Paths.lists()} back_label={gettext("Lists")} title={@page_title} />
+      <.link navigate={Paths.lists()} class="btn btn-ghost btn-sm mb-3">
+        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
+      </.link>
 
       <.form for={@form} id="crm-list-form" phx-change="validate" phx-submit="save">
         <div class="card bg-base-100 shadow-sm">

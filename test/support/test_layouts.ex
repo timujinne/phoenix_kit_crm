@@ -41,6 +41,13 @@ defmodule PhoenixKitCRM.Test.Layouts do
         {msg}
       </div>
     </div>
+    <%!-- Stand-in for the real host app's chrome breadcrumb
+         (LayoutWrapper.app_layout renders page_title/page_subtitle in the
+         navbar) — LiveViews assign these instead of an in-body <h1> per the
+         no-duplicate-header convention, so the test harness needs to render
+         them somewhere for `html =~` assertions to see them. --%>
+    <div :if={assigns[:page_title]} id="test-page-title">{@page_title}</div>
+    <div :if={assigns[:page_subtitle]} id="test-page-subtitle">{@page_subtitle}</div>
     {@inner_content}
     """
   end

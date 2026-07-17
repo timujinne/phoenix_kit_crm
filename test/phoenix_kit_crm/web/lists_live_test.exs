@@ -27,6 +27,24 @@ defmodule PhoenixKitCRM.Web.ListsLiveTest do
     assert html =~ "VIP Customers"
   end
 
+  test "the page title lives in the chrome assign, not a duplicate in-body heading",
+       %{conn: conn} do
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists")
+
+    assert html =~ ~s(id="test-page-title")
+    refute html =~ "<h1"
+    refute has_element?(view, "h1")
+  end
+
+  test "New list and Compare are reachable without a page-level header, in the table toolbar",
+       %{conn: conn} do
+    list_fixture()
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists")
+
+    assert has_element?(view, ~s{a[href="/en/admin/crm/lists/new"]}, "New list")
+    assert has_element?(view, ~s{a[href="/en/admin/crm/comparison"]}, "Compare")
+  end
+
   test "archived lists only show on the Archived tab", %{conn: conn} do
     list = list_fixture(%{"name" => "Old Campaign"})
     {:ok, _} = Lists.archive_list(list)

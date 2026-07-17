@@ -37,6 +37,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
          socket
          |> assign(:list, list)
          |> assign(:page_title, gettext("CRM — %{name}", name: list.name))
+         |> assign(:page_subtitle, list_subtitle(list))
          |> assign(:members, [])
          |> assign(:has_more?, false)
          |> assign(:add_form, blank_add_form())
@@ -158,11 +159,19 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
     members = Lists.list_members(list, opts)
     has_more? = length(members) > @page_size
+    refreshed_list = Lists.get_list!(list.uuid)
 
     socket
     |> assign(:members, Enum.take(members, @page_size))
     |> assign(:has_more?, has_more?)
-    |> assign(:list, Lists.get_list!(list.uuid))
+    |> assign(:list, refreshed_list)
+    |> assign(:page_subtitle, list_subtitle(refreshed_list))
+  end
+
+  defp list_subtitle(list) do
+    ngettext("%{count} subscriber", "%{count} subscribers", list.subscriber_count,
+      count: list.subscriber_count
+    )
   end
 
   defp maybe_put(opts, _key, nil), do: opts
@@ -249,16 +258,9 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <.admin_page_header
-        back={Paths.lists()}
-        back_label={gettext("Lists")}
-        title={@list.name}
-        subtitle={
-          ngettext("%{count} subscriber", "%{count} subscribers", @list.subscriber_count,
-            count: @list.subscriber_count
-          )
-        }
-      />
+      <.link navigate={Paths.lists()} class="btn btn-ghost btn-sm -ml-2">
+        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
+      </.link>
 
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body gap-4">
