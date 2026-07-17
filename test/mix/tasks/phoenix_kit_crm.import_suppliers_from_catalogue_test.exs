@@ -15,6 +15,8 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
   defmodule NormalizationTest do
     use ExUnit.Case, async: true
 
+    import ExUnit.CaptureIO
+
     alias Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue, as: Task
 
     describe "extract_email/1" do
@@ -83,6 +85,28 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
                  "acme.example/www/page"
       end
     end
+
+    describe "print_report/1" do
+      test "counts a rescued :error row in the errors total, alongside :error_creating" do
+        results = [
+          %{name: "A", status: "active", uuid: "1", action: :created, company_uuid: "c1"},
+          %{
+            name: "B",
+            status: "active",
+            uuid: "2",
+            action: :error,
+            company_uuid: nil,
+            error: "boom"
+          },
+          %{name: "C", status: "active", uuid: "3", action: :error_creating, company_uuid: nil}
+        ]
+
+        output = capture_io(fn -> Task.print_report(results) end)
+
+        assert output =~ "Total: 3"
+        assert output =~ "errors: 2"
+      end
+    end
   end
 
   # ── Integration tests (require catalogue table) ───────────────────────
@@ -115,11 +139,7 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
         end
 
       column_exists? =
-        table_exists? and
-          Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue.crm_company_uuid_column?(
-            repo,
-            prefix
-          )
+        table_exists? and Task.crm_company_uuid_column?(repo, prefix)
 
       unless column_exists? do
         IO.puts(

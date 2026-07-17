@@ -331,7 +331,9 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
 
   # ── Report rendering ─────────────────────────────────────────────────
 
-  defp print_report(results) do
+  @doc false
+  # Public for testing — renders the per-row table + totals footer.
+  def print_report(results) do
     name_w = 30
     status_w = 10
     action_w = 18
@@ -370,7 +372,10 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
     matched_email = Map.get(counts, :matched_by_email, 0)
     matched_web = Map.get(counts, :matched_by_website, 0)
     would_create = Map.get(counts, :would_create, 0)
-    errors = Map.get(counts, :error_creating, 0)
+    # :error_creating comes from a failed create-company changeset; :error is a
+    # rescued exception (grant/stamp failure) from process_supplier_row/4 — both
+    # are failures the operator needs reflected in the total, not just the row.
+    errors = Map.get(counts, :error_creating, 0) + Map.get(counts, :error, 0)
 
     Mix.shell().info(
       "\nTotal: #{total} | already-linked: #{already} | created: #{created} | " <>
@@ -389,6 +394,7 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
   defp action_label(:created), do: "created"
   defp action_label(:would_create), do: "would-create"
   defp action_label(:error_creating), do: "ERROR"
+  defp action_label(:error), do: "ERROR"
   defp action_label(other), do: to_string(other)
 
   defp pad(str, width) do
