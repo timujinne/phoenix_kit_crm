@@ -83,7 +83,6 @@ defmodule PhoenixKitCRM.Contacts do
     |> where([c], c.email == ^email and c.status != "trashed")
     |> order_by([c], asc: c.inserted_at)
     |> repo().all()
-    |> repo().preload(company_memberships: :company)
   end
 
   @spec get_contact(UUIDv7.t() | String.t() | nil) :: Contact.t() | nil

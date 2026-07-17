@@ -514,6 +514,23 @@ defmodule PhoenixKitCRM.ListsTest do
 
       assert Lists.list_overlap([list_a.uuid, list_b.uuid]) == []
     end
+
+    test "a duplicate list uuid in the input doesn't require an extra membership to match" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+      contact = contact_fixture()
+
+      {:ok, _} = Lists.add_contact_to_list(contact, list_a)
+      {:ok, _} = Lists.add_contact_to_list(contact, list_b)
+
+      # list_a repeated: the "wanted" distinct-list count must dedup the
+      # input, or this permanently requires one more distinct list_uuid per
+      # membership than the contact could ever have.
+      overlap =
+        Lists.list_overlap([list_a.uuid, list_a.uuid, list_b.uuid]) |> Enum.map(& &1.uuid)
+
+      assert overlap == [contact.uuid]
+    end
   end
 
   # ── PubSub ──────────────────────────────────────────────────────────

@@ -405,7 +405,7 @@ defmodule PhoenixKitCRM.Lists do
   """
   @spec list_overlap([UUIDv7.t() | String.t()]) :: [Contact.t()]
   def list_overlap(list_uuids) when is_list(list_uuids) and length(list_uuids) >= 2 do
-    wanted = length(list_uuids)
+    wanted = list_uuids |> Enum.uniq() |> length()
 
     ListMember
     |> where([m], m.list_uuid in ^list_uuids and m.status == "subscribed")
