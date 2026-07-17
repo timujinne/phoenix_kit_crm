@@ -3,7 +3,7 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
 
   alias PhoenixKitCRM.Lists
   alias PhoenixKitCRM.Lists.{Import, ImportReport}
-  alias PhoenixKitCRM.Schemas.Contact
+  alias PhoenixKitCRM.Schemas.{Contact, ListMember}
 
   defp list_fixture(attrs \\ %{}) do
     {:ok, list} =
@@ -223,6 +223,41 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
       assert report.created == 0
       assert report.skipped.unsubscribed == 1
       assert report.skipped.already_in_list == 0
+    end
+
+    # Cross-feature regression for the Lists.add_contact_to_list/3
+    # reactivate-on-add fix: it must not leak into import. A removed
+    # member's email slot should still block a NEW contact, the removed
+    # member itself must stay untouched, and no orphan contact is created.
+    test "removed member is not reactivated by an import row sharing its email" do
+      list = list_fixture()
+      csv = "email,name\nremoved@example.com,Removed Person\n"
+
+      Import.import_csv(csv, list)
+      [original_member] = Lists.list_members(list)
+      {:ok, removed_member} = Lists.remove_from_list(original_member)
+      assert removed_member.status == "removed"
+
+      contact_count_before = Repo.aggregate(Contact, :count, :uuid)
+
+      report = Import.import_csv(csv, list)
+      assert report.created == 0
+      assert report.added == 0
+      assert report.skipped.unsubscribed == 1
+
+      # Import always creates a brand-new contact per row, so
+      # add_new_contact_to_list/3 always calls add_contact_to_list/3 with a
+      # contact that has never had a row for this list — get_member/2 there
+      # is always nil, so it can only ever take the plain-insert path, never
+      # the reactivate path. The pre-existing removed member must therefore
+      # be left exactly as it was:
+      still_removed = Repo.get!(ListMember, removed_member.uuid)
+      assert still_removed.status == "removed"
+      assert still_removed.unsubscribed_at == removed_member.unsubscribed_at
+
+      # ...and the transaction rollback on the email-uniqueness violation
+      # must still mean no orphan contact for the skipped row:
+      assert Repo.aggregate(Contact, :count, :uuid) == contact_count_before
     end
 
     test "does not create an orphan contact when the membership insert is rolled back" do
