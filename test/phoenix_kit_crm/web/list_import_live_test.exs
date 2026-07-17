@@ -147,4 +147,37 @@ defmodule PhoenixKitCRM.Web.ListImportLiveTest do
     assert html =~ "Paste emails"
     assert length(Contacts.list_contacts()) == contact_count_before
   end
+
+  test "pasting blank text flashes 'No rows found' and stays on the input phase", %{conn: conn} do
+    list = list_fixture()
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    html =
+      view
+      |> form("#crm-import-paste-form", paste: %{text: "   \n\n  "})
+      |> render_submit()
+
+    assert html =~ "No rows found in that input"
+    assert html =~ "Paste emails"
+  end
+
+  test "uploading a file over the size limit shows the too_large error", %{conn: conn} do
+    list = list_fixture()
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    # LiveViewTest requires the content's actual byte size to match the
+    # declared entry size, so the file really is over the 5MB limit here.
+    content = String.duplicate("a", 6_000_000)
+
+    file =
+      file_input(view, "#crm-import-upload-form", :file, [
+        %{name: "huge.csv", content: content, type: "text/csv"}
+      ])
+
+    render_upload(file, "huge.csv")
+
+    assert render(view) =~ "File is too large (max 5 MB)"
+  end
 end

@@ -363,6 +363,122 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
       # a preview is read-only
       assert Repo.aggregate(Contact, :count, :uuid) == contact_count_before
     end
+
+    test "classifies a mixed file correctly through the batched members_by_email/2 lookup" do
+      list = list_fixture()
+
+      Import.import_csv("email,name\nactive@example.com,Active\n", list)
+      Import.import_csv("email,name\nremoved@example.com,Removed\n", list)
+
+      [removed_member] =
+        Enum.filter(Lists.list_members(list), &(&1.email == "removed@example.com"))
+
+      {:ok, _} = Lists.remove_from_list(removed_member)
+
+      rows =
+        Import.parse_csv_rows("""
+        email,name
+        new@example.com,Would Import
+        active@example.com,Already In List
+        removed@example.com,Unsubscribed Slot
+        not-an-email,Invalid
+        ,No Email
+        new@example.com,Duplicate Of Row One
+        """)
+
+      report = Import.preview_rows(rows, list)
+
+      assert report.created == 1
+      assert report.added == 1
+
+      assert report.skipped == %{
+               already_in_list: 1,
+               unsubscribed: 1,
+               no_email: 1,
+               invalid_email: 1,
+               duplicate_in_file: 1
+             }
+
+      by_line = Map.new(report.rows, &{&1.line, &1})
+      assert by_line[2].outcome == :imported
+
+      assert by_line[3] == %{
+               line: 3,
+               email: "active@example.com",
+               outcome: :skipped,
+               reason: :already_in_list
+             }
+
+      assert by_line[4] == %{
+               line: 4,
+               email: "removed@example.com",
+               outcome: :skipped,
+               reason: :unsubscribed
+             }
+
+      assert by_line[5].reason == :invalid_email
+      assert by_line[6] == %{line: 6, email: nil, outcome: :skipped, reason: :no_email}
+      assert by_line[7].reason == :duplicate_in_file
+    end
+
+    test "runs a bounded, constant number of queries regardless of file size" do
+      list = list_fixture()
+
+      # A handful of pre-existing collisions (one active, one removed) plus
+      # many fresh rows — if members_by_email/2's batching ever regressed
+      # back to a per-row Lists.get_member_by_email/2 call, this query count
+      # would scale with row count instead of staying flat.
+      Import.import_csv("email,name\nactive@example.com,Active\n", list)
+      Import.import_csv("email,name\nremoved@example.com,Removed\n", list)
+
+      [removed_member] =
+        Enum.filter(Lists.list_members(list), &(&1.email == "removed@example.com"))
+
+      {:ok, _} = Lists.remove_from_list(removed_member)
+
+      fresh_rows =
+        Enum.map_join(1..300, "\n", fn n -> "fresh#{n}@example.com,Fresh #{n}" end)
+
+      csv = "email,name\nactive@example.com,Again\nremoved@example.com,Again\n" <> fresh_rows
+
+      rows = Import.parse_csv_rows(csv)
+      query_count = count_repo_queries(fn -> Import.preview_rows(rows, list) end)
+
+      assert query_count <= 3
+    end
+  end
+
+  # Counts Ecto query telemetry events (PhoenixKitCRM.Test.Repo's default
+  # prefix) fired while running `fun`. Used to prove preview_rows/2 issues a
+  # small, constant number of queries rather than one per row.
+  #
+  # :telemetry.attach is process-global, not scoped to the caller — under
+  # async: true, other tests' concurrently-running queries fire the same
+  # event and would inflate the count. Telemetry handlers run synchronously
+  # in whichever process executes :telemetry.execute (i.e. whichever process
+  # issued the query), so filtering on self() inside the handler isolates
+  # counts to queries issued by this test's own process.
+  defp count_repo_queries(fun) do
+    handler_id = "count-repo-queries-#{inspect(self())}-#{System.unique_integer()}"
+    counter = :counters.new(1, [])
+    test_pid = self()
+
+    :telemetry.attach(
+      handler_id,
+      [:phoenix_kit_crm, :test, :repo, :query],
+      fn _event, _measurements, _metadata, _config ->
+        if self() == test_pid, do: :counters.add(counter, 1, 1)
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler_id)
+    end
+
+    :counters.get(counter, 1)
   end
 
   describe "run_chunk/4" do

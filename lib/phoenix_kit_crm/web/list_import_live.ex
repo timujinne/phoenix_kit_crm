@@ -228,7 +228,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
                 </button>
               </div>
 
-              <p :for={err <- upload_errors(@uploads.file)} class="text-error text-sm">
+              <p :for={err <- all_upload_errors(@uploads.file)} class="text-error text-sm">
                 {upload_error_message(err)}
               </p>
 
@@ -417,6 +417,17 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   defp skip_reason_label(:no_email), do: gettext("No email")
   defp skip_reason_label(:invalid_email), do: gettext("Invalid email")
   defp skip_reason_label(:duplicate_in_file), do: gettext("Duplicate in file")
+
+  # upload_errors/1 only surfaces config-level errors (e.g. :too_many_files);
+  # per-entry errors like :too_large or :not_accepted are keyed by the
+  # entry's own ref and only come back from upload_errors/2. Combine both so
+  # the template shows every rejection, not just the whole-config ones.
+  defp all_upload_errors(upload_config) do
+    entry_errors =
+      Enum.flat_map(upload_config.entries, &upload_errors(upload_config, &1))
+
+    upload_errors(upload_config) ++ entry_errors
+  end
 
   defp upload_error_message(:too_large), do: gettext("File is too large (max 5 MB)")
   defp upload_error_message(:too_many_files), do: gettext("Only one file at a time")

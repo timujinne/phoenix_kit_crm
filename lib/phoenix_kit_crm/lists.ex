@@ -273,6 +273,31 @@ defmodule PhoenixKitCRM.Lists do
   end
 
   @doc """
+  Batched counterpart to `get_member_by_email/2` — members (any status)
+  holding any of the given `emails` in `list`, as an `%{email => member}`
+  map (`:contact` preloaded, same as the single-email version). One query
+  instead of N; built for `Lists.Import`'s dry-run preview, which used to
+  call `get_member_by_email/2` once per row — fine for a handful of rows,
+  but a file near the upload size limit could mean tens of thousands of
+  sequential round trips inside a single, unyielding LiveView event.
+
+  Map keys are downcased (matching citext's case-insensitive comparison,
+  but the *stored* `email` column value keeps whatever case it was written
+  in, so a raw `Map.new(&{&1.email, &1})` could silently miss a lookup) —
+  callers must downcase their own lookup key too.
+  """
+  @spec members_by_email(ContactList.t(), [String.t()]) :: %{String.t() => ListMember.t()}
+  def members_by_email(_list, []), do: %{}
+
+  def members_by_email(%ContactList{} = list, emails) when is_list(emails) do
+    ListMember
+    |> where([m], m.list_uuid == ^list.uuid and m.email in ^emails)
+    |> repo().all()
+    |> repo().preload(:contact)
+    |> Map.new(&{String.downcase(&1.email), &1})
+  end
+
+  @doc """
   Removes a contact's membership from a list (soft: `status` → `"removed"`,
   stamps `unsubscribed_at`). Never deletes the row. Idempotent if already
   removed. `opts` accepts `:actor_uuid`.

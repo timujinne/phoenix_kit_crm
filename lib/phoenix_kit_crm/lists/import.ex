@@ -106,12 +106,17 @@ defmodule PhoenixKitCRM.Lists.Import do
   Classifies every row exactly like `import_csv/3`/`import_text/3` would,
   but performs NO writes — `:no_email`/`:invalid_email`/`:duplicate_in_file`
   are determined purely from the parsed rows, and an email that would
-  collide on `idx_crm_list_members_list_email` is detected with a read-only
-  `Lists.get_member_by_email/2` lookup instead of attempting (and rolling
-  back) an insert. Returns the same `%ImportReport{}` shape — `created`/
-  `added` mean "would be created/added" — with the full file's counts, so
-  the caller decides how many of `rows` to actually render (e.g. the first
-  20 for a preview).
+  collide on `idx_crm_list_members_list_email` is detected via ONE batched
+  `Lists.members_by_email/2` lookup (all distinct emails in the file, one
+  query) instead of attempting (and rolling back) an insert per row. A
+  naive per-row `Lists.get_member_by_email/2` call here would mean tens of
+  thousands of sequential round trips for a file near the upload size
+  limit, blocking the LiveView process on a single, unyielding preview
+  event — this is a dry-run specifically so it has to stay cheap.
+
+  Returns the same `%ImportReport{}` shape — `created`/`added` mean "would
+  be created/added" — with the full file's counts, so the caller decides
+  how many of `rows` to actually render (e.g. the first 20 for a preview).
 
   Not a 100% guarantee of the real run's outcome: a row that fails
   `Contacts.create_contact/1`'s validation for a reason unrelated to email
@@ -121,10 +126,22 @@ defmodule PhoenixKitCRM.Lists.Import do
   """
   @spec preview_rows([{pos_integer(), map()}], ContactList.t()) :: ImportReport.t()
   def preview_rows(parsed_rows, %ContactList{} = list) do
+    members_by_email = Lists.members_by_email(list, distinct_emails(parsed_rows))
+
     {report, _seen} =
-      process_all(parsed_rows, list, fn _attrs, email -> preview_row(email, list) end)
+      process_all(parsed_rows, list, fn _attrs, email ->
+        preview_row(email, members_by_email)
+      end)
 
     report
+  end
+
+  defp distinct_emails(parsed_rows) do
+    parsed_rows
+    |> Enum.map(fn {_line, attrs} -> attrs["email"] end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&normalize_email/1)
+    |> Enum.uniq()
   end
 
   @doc "A fresh `{report, seen_emails}` accumulator to start chunked processing with `run_chunk/4`."
@@ -285,15 +302,17 @@ defmodule PhoenixKitCRM.Lists.Import do
     Lists.add_new_contact_to_list(contact_attrs, list, Keyword.put(opts, :source, "import"))
   end
 
-  # Read-only counterpart to import_row/4 — an existing member (any status)
-  # holding this email is exactly the condition a real write would hit
-  # idx_crm_list_members_list_email on, so this reuses the same
-  # :email_already_in_list error shape and lets apply_result/5's existing
-  # removed-vs-active classification handle the rest.
-  defp preview_row(email, list) do
-    if Lists.get_member_by_email(list, email),
-      do: {:error, :email_already_in_list},
-      else: {:ok, :would_import}
+  # Read-only counterpart to import_row/4, classifying against the ONE
+  # batched lookup preview_rows/2 already ran rather than querying per row.
+  # Classifies removed-vs-active directly here (unlike the real write path,
+  # which only learns about a collision from a DB constraint error and has
+  # to look the row up separately to classify it — see apply_result/5).
+  defp preview_row(email, members_by_email) do
+    case Map.get(members_by_email, email) do
+      nil -> {:ok, :would_import}
+      %{status: "removed"} -> {:error, :unsubscribed}
+      %{} -> {:error, :already_in_list}
+    end
   end
 
   defp import_metadata(attrs) do
@@ -324,6 +343,18 @@ defmodule PhoenixKitCRM.Lists.Import do
       end
 
     skip(report, line, email, reason)
+  end
+
+  # preview_row/2 already did the removed-vs-active classification itself
+  # (against the batched lookup), so these two just skip directly — no
+  # extra per-row query the way the {:email_already_in_list} clause above
+  # needs for the real write path.
+  defp apply_result(report, line, email, {:error, :unsubscribed}, _list) do
+    skip(report, line, email, :unsubscribed)
+  end
+
+  defp apply_result(report, line, email, {:error, :already_in_list}, _list) do
+    skip(report, line, email, :already_in_list)
   end
 
   defp apply_result(report, line, email, {:error, :already_member}, _list) do
