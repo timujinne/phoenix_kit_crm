@@ -71,9 +71,14 @@ defmodule PhoenixKitCRM.Web.ListsLive do
         <h1 class="text-2xl font-bold flex items-center gap-2">
           <.icon name="hero-envelope" class="w-6 h-6" /> {gettext("Lists")}
         </h1>
-        <.link navigate={Paths.list_new()} class="btn btn-primary btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New list")}
-        </.link>
+        <div class="flex items-center gap-2">
+          <.link navigate={Paths.comparison()} class="btn btn-outline btn-sm">
+            <.icon name="hero-arrows-right-left" class="w-4 h-4" /> {gettext("Compare")}
+          </.link>
+          <.link navigate={Paths.list_new()} class="btn btn-primary btn-sm">
+            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New list")}
+          </.link>
+        </div>
       </div>
 
       <div role="tablist" class="tabs tabs-bordered">

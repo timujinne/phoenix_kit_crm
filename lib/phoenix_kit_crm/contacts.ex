@@ -58,6 +58,34 @@ defmodule PhoenixKitCRM.Contacts do
     |> repo().aggregate(:count, :uuid)
   end
 
+  @doc """
+  Groups non-trashed contacts sharing the same email (case-insensitive, via
+  the column's citext type), for the CRM comparison screen's directory-wide
+  duplicate-email report. Only emails held by 2+ contacts; blank/nil emails
+  are never a "duplicate" (many contacts legitimately have none). Ordered by
+  group size, largest first.
+  """
+  @spec list_duplicate_email_groups() :: [%{email: String.t(), count: pos_integer()}]
+  def list_duplicate_email_groups do
+    Contact
+    |> where([c], not is_nil(c.email) and c.email != "" and c.status != "trashed")
+    |> group_by([c], c.email)
+    |> having([c], count(c.uuid) > 1)
+    |> select([c], %{email: c.email, count: count(c.uuid)})
+    |> order_by([c], desc: count(c.uuid))
+    |> repo().all()
+  end
+
+  @doc "Non-trashed contacts holding exactly this email — the drill-down for a `list_duplicate_email_groups/0` row."
+  @spec list_by_email(String.t()) :: [Contact.t()]
+  def list_by_email(email) when is_binary(email) do
+    Contact
+    |> where([c], c.email == ^email and c.status != "trashed")
+    |> order_by([c], asc: c.inserted_at)
+    |> repo().all()
+    |> repo().preload(company_memberships: :company)
+  end
+
   @spec get_contact(UUIDv7.t() | String.t() | nil) :: Contact.t() | nil
   def get_contact(uuid) do
     # Validate the UUID format first so a malformed id (bad URL / forged event)

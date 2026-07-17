@@ -367,6 +367,25 @@ defmodule PhoenixKitCRM.Lists do
     updated_list
   end
 
+  @doc """
+  Contacts with an active (`"subscribed"`) membership on EVERY one of the
+  given lists — the CRM comparison screen's cross-list overlap report.
+  Requires at least 2 list uuids (an "overlap" of one list is just that
+  list's members, not a comparison).
+  """
+  @spec list_overlap([UUIDv7.t() | String.t()]) :: [Contact.t()]
+  def list_overlap(list_uuids) when is_list(list_uuids) and length(list_uuids) >= 2 do
+    wanted = length(list_uuids)
+
+    ListMember
+    |> where([m], m.list_uuid in ^list_uuids and m.status == "subscribed")
+    |> group_by([m], m.contact_uuid)
+    |> having([m], count(m.list_uuid, :distinct) == ^wanted)
+    |> select([m], m.contact_uuid)
+    |> repo().all()
+    |> Contacts.list_by_uuids()
+  end
+
   defp get_member(%ContactList{} = list, %Contact{} = contact) do
     repo().get_by(ListMember, list_uuid: list.uuid, contact_uuid: contact.uuid)
   end

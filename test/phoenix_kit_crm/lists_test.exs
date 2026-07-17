@@ -437,6 +437,47 @@ defmodule PhoenixKitCRM.ListsTest do
     end
   end
 
+  describe "list_overlap/1" do
+    test "returns only contacts subscribed to every given list" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+      list_c = list_fixture()
+
+      both = contact_fixture()
+      only_a = contact_fixture()
+      all_three = contact_fixture()
+
+      {:ok, _} = Lists.add_contact_to_list(both, list_a)
+      {:ok, _} = Lists.add_contact_to_list(both, list_b)
+
+      {:ok, _} = Lists.add_contact_to_list(only_a, list_a)
+
+      {:ok, _} = Lists.add_contact_to_list(all_three, list_a)
+      {:ok, _} = Lists.add_contact_to_list(all_three, list_b)
+      {:ok, _} = Lists.add_contact_to_list(all_three, list_c)
+
+      overlap_ab = Lists.list_overlap([list_a.uuid, list_b.uuid]) |> Enum.map(& &1.uuid)
+      assert Enum.sort(overlap_ab) == Enum.sort([both.uuid, all_three.uuid])
+
+      overlap_abc =
+        Lists.list_overlap([list_a.uuid, list_b.uuid, list_c.uuid]) |> Enum.map(& &1.uuid)
+
+      assert overlap_abc == [all_three.uuid]
+    end
+
+    test "a removed membership does not count toward the overlap" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+      contact = contact_fixture()
+
+      {:ok, _} = Lists.add_contact_to_list(contact, list_a)
+      {:ok, member_b} = Lists.add_contact_to_list(contact, list_b)
+      {:ok, _} = Lists.remove_from_list(member_b)
+
+      assert Lists.list_overlap([list_a.uuid, list_b.uuid]) == []
+    end
+  end
+
   # ── PubSub ──────────────────────────────────────────────────────────
 
   describe "PubSub broadcasts" do

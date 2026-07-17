@@ -148,4 +148,38 @@ defmodule PhoenixKitCRM.ContactsTest do
       assert hit.uuid in uuids
     end
   end
+
+  describe "list_duplicate_email_groups/0 and list_by_email/1" do
+    test "groups contacts sharing an email, case-insensitively, 2+ per group" do
+      email = "dup-#{System.unique_integer([:positive])}@example.com"
+      c1 = contact_fixture(%{"name" => "First", "email" => email})
+      c2 = contact_fixture(%{"name" => "Second", "email" => String.upcase(email)})
+      # a lone email is not a "duplicate"
+      _unique = contact_fixture(%{"name" => "Alone", "email" => "alone@example.com"})
+
+      groups = Contacts.list_duplicate_email_groups()
+      assert group = Enum.find(groups, &(String.downcase(&1.email) == email))
+      assert group.count == 2
+
+      drilldown = Contacts.list_by_email(group.email)
+      assert Enum.sort(Enum.map(drilldown, & &1.uuid)) == Enum.sort([c1.uuid, c2.uuid])
+    end
+
+    test "nil/blank emails are never counted as duplicates" do
+      contact_fixture(%{"name" => "No Email 1", "email" => nil})
+      contact_fixture(%{"name" => "No Email 2", "email" => nil})
+
+      refute Enum.any?(Contacts.list_duplicate_email_groups(), &is_nil(&1.email))
+    end
+
+    test "trashed contacts are excluded from duplicate detection" do
+      email = "trashed-dup-#{System.unique_integer([:positive])}@example.com"
+      c1 = contact_fixture(%{"name" => "Active", "email" => email})
+      c2 = contact_fixture(%{"name" => "Will Trash", "email" => email})
+      {:ok, _} = Contacts.trash_contact(c2)
+
+      refute Enum.any?(Contacts.list_duplicate_email_groups(), &(&1.email == email))
+      assert Enum.map(Contacts.list_by_email(email), & &1.uuid) == [c1.uuid]
+    end
+  end
 end
