@@ -398,6 +398,26 @@ defmodule PhoenixKitCRM.ListsTest do
       assert recounted.subscriber_count == 1
       assert Lists.get_list!(list.uuid).subscriber_count == 1
     end
+
+    test "removing a pending member (never counted) does not drift the counter negative" do
+      contact = contact_fixture()
+      list = list_fixture()
+
+      pending =
+        %ListMember{}
+        |> ListMember.changeset(%{
+          "list_uuid" => list.uuid,
+          "contact_uuid" => contact.uuid,
+          "status" => "pending",
+          "source" => "form"
+        })
+        |> Repo.insert!()
+
+      assert Lists.get_list!(list.uuid).subscriber_count == 0
+      assert {:ok, removed} = Lists.remove_from_list(pending)
+      assert removed.status == "removed"
+      assert Lists.get_list!(list.uuid).subscriber_count == 0
+    end
   end
 
   # ── Contact-level opt-out / consent ──────────────────────────────────
@@ -434,6 +454,24 @@ defmodule PhoenixKitCRM.ListsTest do
     test "opt_in is idempotent when never opted out" do
       contact = contact_fixture()
       assert {:ok, ^contact} = Lists.opt_in(contact)
+    end
+
+    test "opt_out and opt_in broadcast :contact_opt_out / :contact_opt_in with contact_uuid" do
+      contact = contact_fixture()
+      contact_uuid = contact.uuid
+
+      PubSub.subscribe(PubSub.topic_lists())
+
+      assert {:ok, opted_out} = Lists.opt_out(contact)
+
+      # "crm:lists" is a real, global (non-sandboxed) PubSub topic shared by
+      # every async test that mutates a list or contact consent — pin
+      # contact_uuid to the value THIS test just produced instead of
+      # capturing whatever arrives first.
+      assert_receive {:crm, :contact_opt_out, %{contact_uuid: ^contact_uuid}}, 1000
+
+      assert {:ok, _} = Lists.opt_in(opted_out)
+      assert_receive {:crm, :contact_opt_in, %{contact_uuid: ^contact_uuid}}, 1000
     end
   end
 

@@ -312,11 +312,16 @@ defmodule PhoenixKitCRM.Lists do
 
   def remove_from_list(%ListMember{} = member, opts) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    # "pending" members were never counted in the first place (only
+    # insert_member/reactivate_member's finalize_added bumps +1, landing on
+    # "subscribed") — decrementing here for one would drift the counter
+    # negative, so only a prior "subscribed" status pays this -1 back.
+    was_subscribed? = member.status == "subscribed"
 
     case member |> change(status: "removed", unsubscribed_at: now) |> repo().update() do
       {:ok, updated} = ok ->
         list = repo().get!(ContactList, updated.list_uuid)
-        updated_list = bump_counter(list, -1)
+        updated_list = if was_subscribed?, do: bump_counter(list, -1), else: list
 
         Activity.log("crm.list_member_removed",
           actor_uuid: Keyword.get(opts, :actor_uuid),
@@ -470,7 +475,11 @@ defmodule PhoenixKitCRM.Lists do
       when not is_nil(opted_out_at),
       do: {:ok, contact}
 
-  def opt_out(%Contact{} = contact, opts), do: set_consent(contact, "opt_out", opts)
+  def opt_out(%Contact{} = contact, opts) do
+    contact
+    |> set_consent("opt_out", opts)
+    |> broadcast_on_ok(:contact_opt_out, &contact_payload/1)
+  end
 
   @doc """
   Opts a contact back in — clears `opted_out_at` and appends a `consent`
@@ -479,7 +488,12 @@ defmodule PhoenixKitCRM.Lists do
   @spec opt_in(Contact.t(), keyword()) :: {:ok, Contact.t()} | {:error, Ecto.Changeset.t()}
   def opt_in(contact, opts \\ [])
   def opt_in(%Contact{opted_out_at: nil} = contact, _opts), do: {:ok, contact}
-  def opt_in(%Contact{} = contact, opts), do: set_consent(contact, "opt_in", opts)
+
+  def opt_in(%Contact{} = contact, opts) do
+    contact
+    |> set_consent("opt_in", opts)
+    |> broadcast_on_ok(:contact_opt_in, &contact_payload/1)
+  end
 
   defp set_consent(contact, action, opts) do
     source = Keyword.get(opts, :source, "manual")
@@ -590,6 +604,10 @@ defmodule PhoenixKitCRM.Lists do
 
   defp list_payload(%ContactList{} = list) do
     %{list_uuid: list.uuid, subscriber_count: list.subscriber_count, status: list.status}
+  end
+
+  defp contact_payload(%Contact{} = contact) do
+    %{contact_uuid: contact.uuid, opted_out_at: contact.opted_out_at}
   end
 
   defp member_payload(%ListMember{} = member, %ContactList{} = list) do
