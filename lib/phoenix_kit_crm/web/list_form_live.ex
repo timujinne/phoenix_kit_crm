@@ -119,21 +119,11 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
             />
             <.textarea field={@form[:description]} label={gettext("Description")} />
 
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                name={@form[:subscribable].name}
-                value="true"
-                checked={to_string(@form[:subscribable].value) == "true"}
-                class="checkbox checkbox-sm"
-              />
-              <div>
-                <div class="font-medium">{gettext("Subscribable")}</div>
-                <div class="text-sm text-base-content/60">
-                  {gettext("Shown to contacts in the preference center (once available).")}
-                </div>
-              </div>
-            </label>
+            <.checkbox field={@form[:subscribable]} label={gettext("Subscribable")}>
+              <:description>
+                {gettext("Shown to contacts in the preference center (once available).")}
+              </:description>
+            </.checkbox>
 
             <div :if={@list.uuid} class="divider my-1 text-sm font-semibold text-base-content/60">
               {gettext("Status")}

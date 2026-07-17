@@ -113,6 +113,28 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
     assert length(Contacts.list_contacts()) == contact_count_before
   end
 
+  test "the per-row Resubscribe button (removed members table) reactivates the same membership",
+       %{conn: conn} do
+    list = list_fixture()
+    contact = contact_fixture(%{"email" => "row-removed@example.com"})
+    {:ok, member} = Lists.add_contact_to_list(contact, list)
+    {:ok, _} = Lists.remove_from_list(member)
+
+    contact_count_before = length(Contacts.list_contacts())
+
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+    assert html =~ "Resubscribe"
+
+    view
+    |> element("button[phx-click='resubscribe_row'][phx-value-contact_uuid='#{contact.uuid}']")
+    |> render_click()
+
+    [reactivated] = Lists.list_members(list)
+    assert reactivated.uuid == member.uuid
+    assert reactivated.status == "subscribed"
+    assert length(Contacts.list_contacts()) == contact_count_before
+  end
+
   test "removing a member flips its status without deleting the row", %{conn: conn} do
     list = list_fixture()
     contact = contact_fixture()

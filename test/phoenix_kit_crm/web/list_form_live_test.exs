@@ -36,4 +36,31 @@ defmodule PhoenixKitCRM.Web.ListFormLiveTest do
 
     assert Lists.get_list!(list.uuid).name == "Renamed"
   end
+
+  # Regression test: the Subscribable checkbox previously had no hidden
+  # "false" fallback input, so an unchecked box was omitted entirely from a
+  # real browser's form submission — Ecto.Changeset.cast/3 never saw the key
+  # and the flag silently stayed on. The rendered DOM must reflect an actual
+  # unchecked state before submit (not just an omitted key in the test's
+  # override map) for this to exercise the same path a real browser would.
+  test "unchecking Subscribable and saving actually clears the flag", %{conn: conn} do
+    {:ok, list} =
+      Lists.create_list(%{"name" => "Original", "slug" => "original", "subscribable" => true})
+
+    assert Lists.get_list!(list.uuid).subscribable
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/edit")
+
+    # Uncheck it (mirrors a real click) before submitting, so the hidden
+    # fallback — not an explicit override — is what supplies "false".
+    view
+    |> form("#crm-list-form", list: %{subscribable: false})
+    |> render_change()
+
+    view
+    |> form("#crm-list-form", list: %{name: "Renamed"})
+    |> render_submit()
+
+    refute Lists.get_list!(list.uuid).subscribable
+  end
 end
