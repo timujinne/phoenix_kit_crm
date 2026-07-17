@@ -28,6 +28,7 @@ defmodule PhoenixKitCRM.Routes do
     company_show = Web.CompanyShowLive
     list_form = Web.ListFormLive
     list_members = Web.ListMembersLive
+    list_import = Web.ListImportLive
 
     quote do
       live("/admin/crm/role/:role_uuid", unquote(role_view), :index,
@@ -71,6 +72,10 @@ defmodule PhoenixKitCRM.Routes do
 
       live("/admin/crm/lists/:uuid/members", unquote(list_members), :index,
         as: :"crm_list_members#{unquote(suffix)}"
+      )
+
+      live("/admin/crm/lists/:uuid/import", unquote(list_import), :index,
+        as: :"crm_list_import#{unquote(suffix)}"
       )
     end
   end

@@ -150,6 +150,11 @@ exclude =
 # `live/2`. Runs with `server: false` (no port). Only when the LiveView tests will
 # actually run (DB up + CRM tables present), since they're tagged :integration.
 if repo_available and crm_tables_present do
+  # Phoenix.LiveViewTest's file_input/render_upload joins a real Phoenix
+  # Channel under the hood to track upload progress, which needs the
+  # endpoint's own :pubsub_server running (independent of PhoenixKit's
+  # internal PubSub.Manager, which is unrelated).
+  {:ok, _} = Phoenix.PubSub.Supervisor.start_link(name: PhoenixKitCRM.Test.PubSub)
   {:ok, _} = PhoenixKitCRM.Test.Endpoint.start_link()
 end
 

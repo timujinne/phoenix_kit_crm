@@ -1,0 +1,150 @@
+defmodule PhoenixKitCRM.Web.ListImportLiveTest do
+  use PhoenixKitCRM.LiveCase
+
+  alias PhoenixKitCRM.{Contacts, Lists}
+
+  setup %{conn: conn} do
+    scope = fake_scope()
+    {:ok, conn: put_test_scope(conn, scope), scope: scope}
+  end
+
+  defp list_fixture(attrs \\ %{}) do
+    {:ok, list} =
+      Lists.create_list(
+        Map.merge(
+          %{"name" => "Newsletter", "slug" => "list-#{System.unique_integer([:positive])}"},
+          attrs
+        )
+      )
+
+    list
+  end
+
+  test "renders the paste and upload input sections", %{conn: conn} do
+    list = list_fixture(%{"name" => "Beta Testers"})
+
+    {:ok, _view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    assert html =~ "Beta Testers"
+    assert html =~ "Paste emails"
+    assert html =~ "Upload a file"
+  end
+
+  test "previewing pasted emails shows counts and writes nothing to the database", %{conn: conn} do
+    list = list_fixture()
+    contact_count_before = length(Contacts.list_contacts())
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    html =
+      view
+      |> form("#crm-import-paste-form", paste: %{text: "good@example.com\nnot-an-email\n"})
+      |> render_submit()
+
+    assert html =~ "nothing has been imported yet"
+    assert html =~ "good@example.com"
+    assert Lists.list_members(list) == []
+    assert length(Contacts.list_contacts()) == contact_count_before
+  end
+
+  test "full flow via paste: preview -> confirm -> done renders the report", %{
+    conn: conn,
+    scope: scope
+  } do
+    list = list_fixture()
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    view
+    |> form("#crm-import-paste-form", paste: %{text: "one@example.com\ntwo@example.com\n"})
+    |> render_submit()
+
+    view |> element("button[phx-click='confirm_import']") |> render_click()
+    html = render(view)
+
+    assert html =~ "Imported 2 contacts"
+    members = Lists.list_members(list)
+    assert length(members) == 2
+
+    assert_activity_logged("crm.list_member_added",
+      resource_uuid: hd(members).uuid,
+      actor_uuid: scope.user.uuid
+    )
+  end
+
+  test "upload path: a small CSV file imports via LiveViewTest file_input", %{conn: conn} do
+    list = list_fixture()
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    file =
+      file_input(view, "#crm-import-upload-form", :file, [
+        %{
+          name: "contacts.csv",
+          content: "email,name\nalice@example.com,Alice\nbob@example.com,Bob\n",
+          type: "text/csv"
+        }
+      ])
+
+    assert render_upload(file, "contacts.csv") =~ ~s(value="100")
+
+    html = view |> form("#crm-import-upload-form") |> render_submit()
+    assert html =~ "contacts.csv"
+    assert html =~ "alice@example.com"
+
+    view |> element("button[phx-click='confirm_import']") |> render_click()
+    html = render(view)
+
+    assert html =~ "Imported 2 contacts"
+    assert length(Lists.list_members(list)) == 2
+  end
+
+  test "the report breaks skips out by bucket: already_in_list, invalid_email, no_email, duplicate_in_file",
+       %{conn: conn} do
+    list = list_fixture()
+
+    {:ok, existing} =
+      Contacts.create_contact(%{"name" => "Existing", "email" => "existing@example.com"})
+
+    {:ok, _} = Lists.add_contact_to_list(existing, list)
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    text = """
+    existing@example.com
+    not-an-email
+
+    dup@example.com
+    dup@example.com
+    """
+
+    view
+    |> form("#crm-import-paste-form", paste: %{text: text})
+    |> render_submit()
+
+    view |> element("button[phx-click='confirm_import']") |> render_click()
+    html = render(view)
+
+    assert html =~ "Already in list"
+    assert html =~ "Invalid email"
+    assert html =~ "Duplicate in file"
+    assert html =~ "existing@example.com"
+    assert html =~ "dup@example.com"
+  end
+
+  test "back_to_input returns to the input phase without importing anything", %{conn: conn} do
+    list = list_fixture()
+    contact_count_before = length(Contacts.list_contacts())
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    view
+    |> form("#crm-import-paste-form", paste: %{text: "someone@example.com\n"})
+    |> render_submit()
+
+    html = view |> element("button[phx-click='back_to_input']") |> render_click()
+
+    assert html =~ "Paste emails"
+    assert length(Contacts.list_contacts()) == contact_count_before
+  end
+end

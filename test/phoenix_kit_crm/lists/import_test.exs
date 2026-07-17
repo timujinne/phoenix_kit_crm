@@ -282,4 +282,136 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
       assert map_size(%ImportReport{}.skipped) == 5
     end
   end
+
+  describe "parse_csv_rows/1 and parse_text_rows/1" do
+    test "parse without touching the database" do
+      list = list_fixture()
+      count_before = Repo.aggregate(Contact, :count, :uuid)
+
+      csv_rows = Import.parse_csv_rows("email,name\na@example.com,A\n")
+      text_rows = Import.parse_text_rows("b@example.com\n")
+
+      assert csv_rows == [
+               {2,
+                %{"email" => "a@example.com", "name" => "A", "company" => nil, "locale" => nil}}
+             ]
+
+      assert text_rows == [
+               {1,
+                %{"email" => "b@example.com", "name" => nil, "company" => nil, "locale" => nil}}
+             ]
+
+      assert Lists.list_members(list) == []
+      assert Repo.aggregate(Contact, :count, :uuid) == count_before
+    end
+  end
+
+  describe "preview_rows/2" do
+    test "classifies every row without writing anything" do
+      list = list_fixture()
+      count_before = Repo.aggregate(Contact, :count, :uuid)
+
+      rows =
+        Import.parse_csv_rows("""
+        email,name
+        good@example.com,Good Row
+        good@example.com,Duplicate
+        not-an-email,Bad Row
+        ,No Email
+        """)
+
+      report = Import.preview_rows(rows, list)
+
+      assert report.created == 1
+      assert report.added == 1
+      assert report.skipped.duplicate_in_file == 1
+      assert report.skipped.invalid_email == 1
+      assert report.skipped.no_email == 1
+      assert length(report.rows) == 4
+
+      # nothing was actually written
+      assert Lists.list_members(list) == []
+      assert Repo.aggregate(Contact, :count, :uuid) == count_before
+    end
+
+    test "detects already_in_list vs unsubscribed via a read-only lookup" do
+      list = list_fixture()
+
+      Import.import_csv("email,name\nactive@example.com,Active\n", list)
+      Import.import_csv("email,name\nremoved@example.com,Removed\n", list)
+
+      [removed_member] =
+        Enum.filter(Lists.list_members(list), &(&1.email == "removed@example.com"))
+
+      {:ok, _} = Lists.remove_from_list(removed_member)
+
+      contact_count_before = Repo.aggregate(Contact, :count, :uuid)
+
+      rows =
+        Import.parse_csv_rows("""
+        email,name
+        active@example.com,Active Again
+        removed@example.com,Removed Again
+        """)
+
+      report = Import.preview_rows(rows, list)
+
+      assert report.created == 0
+      assert report.skipped.already_in_list == 1
+      assert report.skipped.unsubscribed == 1
+
+      # a preview is read-only
+      assert Repo.aggregate(Contact, :count, :uuid) == contact_count_before
+    end
+  end
+
+  describe "run_chunk/4" do
+    test "processing in chunks matches a single-shot import_csv/3 run" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+
+      csv = """
+      email,name
+      one@example.com,One
+      two@example.com,Two
+      three@example.com,Three
+      """
+
+      whole_report = Import.import_csv(csv, list_a)
+
+      rows = Import.parse_csv_rows(csv)
+      [chunk1, chunk2] = Enum.chunk_every(rows, 2)
+
+      {report_1, acc_1} = Import.run_chunk(chunk1, list_b, [], Import.new_accumulator())
+      {report_2, _acc_2} = Import.run_chunk(chunk2, list_b, [], {report_1, acc_1})
+
+      assert report_2.created == whole_report.created
+      assert report_2.added == whole_report.added
+      assert report_2.skipped == whole_report.skipped
+      assert length(report_2.rows) == length(whole_report.rows)
+
+      assert length(Lists.list_members(list_b)) == 3
+    end
+
+    test "duplicate_in_file detection carries across chunk boundaries" do
+      list = list_fixture()
+
+      rows =
+        Import.parse_csv_rows("""
+        email,name
+        shared@example.com,First
+        other@example.com,Other
+        shared@example.com,Second
+        """)
+
+      [chunk1, chunk2] = [Enum.take(rows, 2), Enum.drop(rows, 2)]
+
+      {report_1, acc_1} = Import.run_chunk(chunk1, list, [], Import.new_accumulator())
+      {report_2, _acc_2} = Import.run_chunk(chunk2, list, [], {report_1, acc_1})
+
+      assert report_2.created == 2
+      assert report_2.skipped.duplicate_in_file == 1
+      assert length(Lists.list_members(list)) == 2
+    end
+  end
 end

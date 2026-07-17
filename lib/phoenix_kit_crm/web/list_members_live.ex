@@ -265,6 +265,9 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
         }
       >
         <:actions>
+          <.link navigate={Paths.list_import(@list.uuid)} class="btn btn-outline btn-sm">
+            <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> {gettext("Import")}
+          </.link>
           <.link navigate={Paths.list_edit(@list.uuid)} class="btn btn-ghost btn-sm">
             <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Edit list")}
           </.link>

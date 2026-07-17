@@ -89,6 +89,73 @@ defmodule PhoenixKitCRM.Lists.Import do
     |> run(list, opts)
   end
 
+  @doc """
+  Parses CSV content into `{line, attrs}` rows WITHOUT writing anything —
+  the same parser `import_csv/3` uses internally, exposed for the import
+  UI's dry-run preview and chunked processing (`run_chunk/4`) so neither
+  has to duplicate the parsing.
+  """
+  @spec parse_csv_rows(String.t()) :: [{pos_integer(), map()}]
+  def parse_csv_rows(content), do: parse_csv(content)
+
+  @doc "Same as `parse_csv_rows/1`, for plaintext/clipboard content."
+  @spec parse_text_rows(String.t()) :: [{pos_integer(), map()}]
+  def parse_text_rows(content), do: parse_text(content)
+
+  @doc """
+  Classifies every row exactly like `import_csv/3`/`import_text/3` would,
+  but performs NO writes — `:no_email`/`:invalid_email`/`:duplicate_in_file`
+  are determined purely from the parsed rows, and an email that would
+  collide on `idx_crm_list_members_list_email` is detected with a read-only
+  `Lists.get_member_by_email/2` lookup instead of attempting (and rolling
+  back) an insert. Returns the same `%ImportReport{}` shape — `created`/
+  `added` mean "would be created/added" — with the full file's counts, so
+  the caller decides how many of `rows` to actually render (e.g. the first
+  20 for a preview).
+
+  Not a 100% guarantee of the real run's outcome: a row that fails
+  `Contacts.create_contact/1`'s validation for a reason unrelated to email
+  uniqueness (e.g. an oversized name) only surfaces at the real
+  `import_csv/3`/`import_text/3` call, since this never attempts the
+  insert.
+  """
+  @spec preview_rows([{pos_integer(), map()}], ContactList.t()) :: ImportReport.t()
+  def preview_rows(parsed_rows, %ContactList{} = list) do
+    {report, _seen} =
+      process_all(parsed_rows, list, fn _attrs, email -> preview_row(email, list) end)
+
+    report
+  end
+
+  @doc "A fresh `{report, seen_emails}` accumulator to start chunked processing with `run_chunk/4`."
+  @spec new_accumulator() :: {ImportReport.t(), MapSet.t()}
+  def new_accumulator, do: {%ImportReport{}, MapSet.new()}
+
+  @doc """
+  Processes one slice of already-parsed rows (from `parse_csv_rows/1` /
+  `parse_text_rows/1`), threading the `{report, seen_emails}` accumulator
+  from `new_accumulator/0` (or a prior `run_chunk/4` call) through — so
+  `:duplicate_in_file` detection and the running counts stay correct across
+  chunk boundaries. Lets a caller (the import UI) process a huge file in
+  chunks with a progress update between each, instead of blocking on the
+  whole file in one pass. `opts` accepts `:actor_uuid`/`:source` like
+  `import_csv/3`.
+  """
+  @spec run_chunk(
+          [{pos_integer(), map()}],
+          ContactList.t(),
+          keyword(),
+          {ImportReport.t(), MapSet.t()}
+        ) :: {ImportReport.t(), MapSet.t()}
+  def run_chunk(rows_chunk, %ContactList{} = list, opts, {%ImportReport{}, %MapSet{}} = acc) do
+    process_all(
+      rows_chunk,
+      list,
+      fn attrs, email -> import_row(attrs, email, list, opts) end,
+      acc
+    )
+  end
+
   # ── Parsing ─────────────────────────────────────────────────────────
 
   defp parse_csv(content) do
@@ -160,18 +227,30 @@ defmodule PhoenixKitCRM.Lists.Import do
   end
 
   # ── Row pipeline ────────────────────────────────────────────────────
+  #
+  # `run/3` (writes) and `preview_rows/2` (read-only) share this entire
+  # pipeline — only the last step (the `resolver` fun) differs between them,
+  # so the no_email/invalid_email/duplicate_in_file classification and the
+  # accumulator threading can never drift between what a preview promises
+  # and what the real run does.
 
   defp run(parsed_rows, %ContactList{} = list, opts) do
     {report, _seen} =
-      Enum.reduce(parsed_rows, {%ImportReport{}, MapSet.new()}, fn {line, attrs},
-                                                                   {report, seen} ->
-        process_row(line, attrs, list, opts, report, seen)
-      end)
+      process_all(parsed_rows, list, fn attrs, email -> import_row(attrs, email, list, opts) end)
 
     report
   end
 
-  defp process_row(line, attrs, list, opts, report, seen) do
+  defp process_all(parsed_rows, list, resolver),
+    do: process_all(parsed_rows, list, resolver, new_accumulator())
+
+  defp process_all(parsed_rows, list, resolver, {report, seen}) do
+    Enum.reduce(parsed_rows, {report, seen}, fn {line, attrs}, {report, seen} ->
+      process_row(line, attrs, list, report, seen, resolver)
+    end)
+  end
+
+  defp process_row(line, attrs, list, report, seen, resolver) do
     case attrs["email"] do
       nil ->
         {skip(report, line, nil, :no_email), seen}
@@ -187,7 +266,7 @@ defmodule PhoenixKitCRM.Lists.Import do
             {skip(report, line, email, :duplicate_in_file), seen}
 
           true ->
-            result = import_row(attrs, email, list, opts)
+            result = resolver.(attrs, email)
             {apply_result(report, line, email, result, list), MapSet.put(seen, email)}
         end
     end
@@ -206,6 +285,17 @@ defmodule PhoenixKitCRM.Lists.Import do
     Lists.add_new_contact_to_list(contact_attrs, list, Keyword.put(opts, :source, "import"))
   end
 
+  # Read-only counterpart to import_row/4 — an existing member (any status)
+  # holding this email is exactly the condition a real write would hit
+  # idx_crm_list_members_list_email on, so this reuses the same
+  # :email_already_in_list error shape and lets apply_result/5's existing
+  # removed-vs-active classification handle the rest.
+  defp preview_row(email, list) do
+    if Lists.get_member_by_email(list, email),
+      do: {:error, :email_already_in_list},
+      else: {:ok, :would_import}
+  end
+
   defp import_metadata(attrs) do
     %{"source" => "import"} |> maybe_put("import_company", attrs["company"])
   end
@@ -219,7 +309,7 @@ defmodule PhoenixKitCRM.Lists.Import do
     if Regex.match?(@locale_format, locale), do: locale, else: nil
   end
 
-  defp apply_result(report, line, email, {:ok, {_contact, _member}}, _list) do
+  defp apply_result(report, line, email, {:ok, _}, _list) do
     report
     |> Map.update!(:created, &(&1 + 1))
     |> Map.update!(:added, &(&1 + 1))

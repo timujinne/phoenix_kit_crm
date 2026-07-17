@@ -44,6 +44,7 @@ defmodule PhoenixKitCRM.Test.Router do
       live("/lists/new", ListFormLive, :new)
       live("/lists/:uuid/edit", ListFormLive, :edit)
       live("/lists/:uuid/members", ListMembersLive, :index)
+      live("/lists/:uuid/import", ListImportLive, :index)
     end
   end
 end
