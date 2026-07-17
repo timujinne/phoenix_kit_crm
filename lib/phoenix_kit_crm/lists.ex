@@ -130,12 +130,23 @@ defmodule PhoenixKitCRM.Lists do
   current email (may be `nil`; the contact is just unsendable). Sets
   `subscribed_at` and bumps the list's `subscriber_count`.
 
+  `idx_crm_list_members_list_contact` has no status predicate — once a
+  contact has ever had a row for a list (even a `removed` one), that
+  `(list_uuid, contact_uuid)` slot is occupied at the DB level forever. So
+  a blind insert here would raise `:already_member` for a contact that
+  isn't currently a member at all. Mirrors `PartyRoles.grant_role/3`: looks
+  the row up first — no row → insert; a `removed`/`pending` row →
+  reactivate it in place (status → `"subscribed"`, refreshed
+  `subscribed_at`/`source`/`email`, `unsubscribed_at` cleared); an already
+  `"subscribed"` row → `{:error, :already_member}` (a real no-op, not a
+  reactivation).
+
   ## Options
     * `:source` — one of `PhoenixKitCRM.Schemas.ListMember.sources/0` (default `"manual"`)
     * `:actor_uuid` — for the activity log entry
 
-  Returns `{:error, :already_member}` if this contact is already in the
-  list, or `{:error, :email_already_in_list}` if a *different* contact
+  Returns `{:error, :already_member}` if the contact is already an active
+  member, or `{:error, :email_already_in_list}` if a *different* contact
   already holds this email in the list (the `idx_crm_list_members_list_email`
   race-shaped case — a `removed` member still holds its email slot).
   """
@@ -143,6 +154,14 @@ defmodule PhoenixKitCRM.Lists do
           {:ok, ListMember.t()}
           | {:error, :already_member | :email_already_in_list | Ecto.Changeset.t()}
   def add_contact_to_list(%Contact{} = contact, %ContactList{} = list, opts \\ []) do
+    case get_member(list, contact) do
+      nil -> insert_member(contact, list, opts)
+      %ListMember{status: "subscribed"} -> {:error, :already_member}
+      %ListMember{} = existing -> reactivate_member(existing, contact, list, opts)
+    end
+  end
+
+  defp insert_member(contact, list, opts) do
     source = Keyword.get(opts, :source, "manual")
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -160,22 +179,45 @@ defmodule PhoenixKitCRM.Lists do
       |> change(email: contact.email)
 
     case repo().insert(changeset) do
-      {:ok, member} ->
-        updated_list = bump_counter(list, 1)
-
-        Activity.log("crm.list_member_added",
-          actor_uuid: Keyword.get(opts, :actor_uuid),
-          resource_type: "crm_list_member",
-          resource_uuid: member.uuid,
-          metadata: %{"list_uuid" => list.uuid, "contact_uuid" => contact.uuid}
-        )
-
-        PubSub.broadcast_list_event(:member_added, member_payload(member, updated_list))
-        {:ok, member}
-
-      {:error, cs} ->
-        classify_membership_error(cs)
+      {:ok, member} -> finalize_added(member, list, contact, opts)
+      {:error, cs} -> classify_membership_error(cs)
     end
+  end
+
+  defp reactivate_member(existing, contact, list, opts) do
+    source = Keyword.get(opts, :source, "manual")
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    attrs = %{
+      "status" => "subscribed",
+      "subscribed_at" => now,
+      "unsubscribed_at" => nil,
+      "source" => source
+    }
+
+    changeset =
+      existing
+      |> ListMember.changeset(attrs)
+      |> change(email: contact.email)
+
+    case repo().update(changeset) do
+      {:ok, member} -> finalize_added(member, list, contact, opts)
+      {:error, cs} -> classify_membership_error(cs)
+    end
+  end
+
+  defp finalize_added(member, list, contact, opts) do
+    updated_list = bump_counter(list, 1)
+
+    Activity.log("crm.list_member_added",
+      actor_uuid: Keyword.get(opts, :actor_uuid),
+      resource_type: "crm_list_member",
+      resource_uuid: member.uuid,
+      metadata: %{"list_uuid" => list.uuid, "contact_uuid" => contact.uuid}
+    )
+
+    PubSub.broadcast_list_event(:member_added, member_payload(member, updated_list))
+    {:ok, member}
   end
 
   @doc """

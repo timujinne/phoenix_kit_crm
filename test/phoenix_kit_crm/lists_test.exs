@@ -210,6 +210,81 @@ defmodule PhoenixKitCRM.ListsTest do
         actor_uuid: actor_uuid
       )
     end
+
+    test "reactivates a removed member instead of permanently blocking re-add" do
+      # idx_crm_list_members_list_contact has no status predicate, so a blind
+      # insert here would hit :already_member forever once a contact has ever
+      # had any row for this list — this is the regression test for that bug.
+      contact = contact_fixture(%{"email" => "reactivate@example.com"})
+      list = list_fixture()
+
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+      {:ok, removed} = Lists.remove_from_list(member)
+      assert removed.status == "removed"
+      assert Lists.get_list!(list.uuid).subscriber_count == 0
+
+      assert {:ok, reactivated} = Lists.add_contact_to_list(contact, list, source: "manual")
+      assert reactivated.uuid == member.uuid
+      assert reactivated.status == "subscribed"
+      assert reactivated.unsubscribed_at == nil
+      assert reactivated.subscribed_at
+      assert reactivated.email == "reactivate@example.com"
+      assert Lists.subscribed?(contact, list)
+      assert Lists.get_list!(list.uuid).subscriber_count == 1
+    end
+
+    test "reactivation refreshes the email snapshot from the contact's current email" do
+      contact = contact_fixture(%{"email" => "old@example.com"})
+      list = list_fixture()
+
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+      {:ok, _} = Lists.remove_from_list(member)
+
+      {:ok, updated_contact} = Contacts.update_contact(contact, %{"email" => "new@example.com"})
+      assert {:ok, reactivated} = Lists.add_contact_to_list(updated_contact, list)
+      assert reactivated.email == "new@example.com"
+    end
+
+    test "reactivates a pending member" do
+      contact = contact_fixture()
+      list = list_fixture()
+
+      pending =
+        %ListMember{}
+        |> ListMember.changeset(%{
+          "list_uuid" => list.uuid,
+          "contact_uuid" => contact.uuid,
+          "status" => "pending",
+          "source" => "form"
+        })
+        |> Repo.insert!()
+
+      assert {:ok, reactivated} = Lists.add_contact_to_list(contact, list)
+      assert reactivated.uuid == pending.uuid
+      assert reactivated.status == "subscribed"
+    end
+
+    test "reactivating a removed member logs the activity and broadcasts :member_added" do
+      contact = contact_fixture()
+      list = list_fixture()
+
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+      {:ok, _} = Lists.remove_from_list(member)
+
+      PubSub.subscribe(PubSub.topic_lists())
+      actor_uuid = Ecto.UUID.generate()
+
+      assert {:ok, reactivated} =
+               Lists.add_contact_to_list(contact, list, actor_uuid: actor_uuid)
+
+      assert_receive {:crm, :member_added, %{member_uuid: member_uuid, subscriber_count: 1}}
+      assert member_uuid == reactivated.uuid
+
+      assert_activity_logged("crm.list_member_added",
+        resource_uuid: reactivated.uuid,
+        actor_uuid: actor_uuid
+      )
+    end
   end
 
   describe "subscribed?/2 and remove_from_list/2,3" do
