@@ -38,7 +38,12 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
            accept: ~w(.csv .txt),
            max_entries: 1,
            max_file_size: @max_file_size,
-           auto_upload: false
+           # auto_upload: the file starts transferring the moment it is picked,
+           # so the progress bar the entry row shows actually moves. With manual
+           # upload (false) nothing transfers until the form submit — live-tested
+           # by the user as "the upload never moves": a 0% bar next to a chosen
+           # file reads as a stall, not as "now press Preview".
+           auto_upload: true
          )
          |> reset_to_input()}
     end
@@ -236,7 +241,10 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
                 <.button
                   type="submit"
                   class="btn-primary"
-                  disabled={@uploads.file.entries == []}
+                  disabled={
+                    @uploads.file.entries == [] or
+                      not Enum.all?(@uploads.file.entries, & &1.done?)
+                  }
                   phx-disable-with={gettext("Parsing…")}
                 >
                   {gettext("Preview")}
