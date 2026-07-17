@@ -149,4 +149,81 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
     assert Lists.list_members(list, status: "removed") |> length() == 1
     refute Lists.subscribed?(contact, list)
   end
+
+  describe "search" do
+    test "narrows the table to matches by email or contact name", %{conn: conn} do
+      list = list_fixture()
+      alice = contact_fixture(%{"name" => "Alice Wonder", "email" => "alice@example.com"})
+      bob = contact_fixture(%{"name" => "Bob Builder", "email" => "bob@example.com"})
+      {:ok, _} = Lists.add_contact_to_list(alice, list)
+      {:ok, _} = Lists.add_contact_to_list(bob, list)
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+      assert html =~ "Alice Wonder"
+      assert html =~ "Bob Builder"
+
+      # <.search_toolbar>'s input's phx-change fires from inside the
+      # component's wrapping <form> (on_submit="search") — Phoenix LiveView's
+      # client JS requires a phx-change input to be inside a <form> at all
+      # (a bare input outside any <form> throws "form events require the
+      # input to be inside a form" and never reaches the server). Targeting
+      # the input directly (not the form itself, which only carries
+      # phx-submit) exercises the same structural path a real browser
+      # keystroke would.
+      html =
+        view
+        |> element("form[phx-submit='search'] input[name='search']")
+        |> render_change(%{"search" => "alice"})
+
+      assert html =~ "Alice Wonder"
+      refute html =~ "Bob Builder"
+    end
+
+    test "matches by contact name too, not just email", %{conn: conn} do
+      list = list_fixture()
+      alice = contact_fixture(%{"name" => "Alice Wonder", "email" => "alice@example.com"})
+      bob = contact_fixture(%{"name" => "Bob Builder", "email" => "bob@example.com"})
+      {:ok, _} = Lists.add_contact_to_list(alice, list)
+      {:ok, _} = Lists.add_contact_to_list(bob, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      html =
+        view
+        |> element("form[phx-submit='search'] input[name='search']")
+        |> render_change(%{"search" => "wonder"})
+
+      assert html =~ "Alice Wonder"
+      refute html =~ "Bob Builder"
+    end
+  end
+
+  describe "locale" do
+    test "the members table shows each member's contact locale, dash when blank", %{conn: conn} do
+      list = list_fixture()
+      alice = contact_fixture(%{"name" => "Alice Wonder", "locale" => "de-DE"})
+      bob = contact_fixture(%{"name" => "Bob Builder"})
+      {:ok, _} = Lists.add_contact_to_list(alice, list)
+      {:ok, _} = Lists.add_contact_to_list(bob, list)
+
+      {:ok, _view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      assert html =~ "de-DE"
+      assert html =~ "Locale"
+    end
+
+    test "the manual add-by-email form accepts a locale", %{conn: conn} do
+      list = list_fixture()
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      view
+      |> form("#crm-list-add-member-form",
+        add_member: %{"email" => "new@example.com", "name" => "New Person", "locale" => "fr"}
+      )
+      |> render_submit()
+
+      [member] = Lists.list_members(list)
+      assert member.contact.locale == "fr"
+    end
+  end
 end

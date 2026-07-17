@@ -77,19 +77,7 @@ defmodule PhoenixKitCRM.Web.ListsLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <h1 class="text-2xl font-bold flex items-center gap-2">
-          <.icon name="hero-envelope" class="w-6 h-6" /> {gettext("Lists")}
-        </h1>
-        <div class="flex items-center gap-2">
-          <.link navigate={Paths.comparison()} class="btn btn-outline btn-sm">
-            <.icon name="hero-arrows-right-left" class="w-4 h-4" /> {gettext("Compare")}
-          </.link>
-          <.link navigate={Paths.list_new()} class="btn btn-primary btn-sm">
-            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New list")}
-          </.link>
-        </div>
-      </div>
+      <.admin_page_header title={gettext("Lists")} />
 
       <div role="tablist" class="tabs tabs-bordered">
         <.link patch={Paths.lists()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
@@ -109,7 +97,11 @@ defmodule PhoenixKitCRM.Web.ListsLive do
         icon="hero-envelope"
         title={gettext("No lists yet.")}
         variant="card"
-      />
+      >
+        <.link navigate={Paths.list_new()} class="btn btn-primary">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Create first list")}
+        </.link>
+      </.empty_state>
 
       <.table_default
         :if={@lists != []}
@@ -119,6 +111,20 @@ defmodule PhoenixKitCRM.Web.ListsLive do
         card_title={fn l -> card_title_link(l) end}
         card_fields={fn l -> card_fields(l) end}
       >
+        <:toolbar_title>
+          <span class="text-sm text-base-content/60">
+            {ngettext("%{count} list", "%{count} lists", length(@lists), count: length(@lists))}
+          </span>
+        </:toolbar_title>
+        <:toolbar_actions>
+          <.link navigate={Paths.comparison()} class="btn btn-outline btn-sm">
+            <.icon name="hero-arrows-right-left" class="w-4 h-4" /> {gettext("Compare")}
+          </.link>
+          <.link navigate={Paths.list_new()} class="btn btn-primary btn-sm">
+            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New list")}
+          </.link>
+        </:toolbar_actions>
+
         <:card_actions :let={list}>
           {row_menu(%{list: list, filter: @filter, id_suffix: "card"})}
         </:card_actions>

@@ -304,6 +304,16 @@ defmodule PhoenixKitCRM.Web.ContactFormLive do
             <.input field={@form[:email]} type="email" label={gettext("Email")} />
             <.input field={@form[:phone]} label={gettext("Phone")} />
             <.select field={@form[:status]} label={gettext("Status")} options={status_options()} />
+
+            <div>
+              <.input field={@form[:locale]} label={gettext("Locale")} placeholder="en / de-DE" />
+              <p class="text-xs text-base-content/50 mt-1">
+                {gettext(
+                  "Language/region code used to pick this contact's language when sending (e.g. \"en\", \"de-DE\")."
+                )}
+              </p>
+            </div>
+
             <.textarea field={@form[:notes]} label={gettext("Notes")} />
 
             <div class="divider my-1 text-sm font-semibold text-base-content/60">

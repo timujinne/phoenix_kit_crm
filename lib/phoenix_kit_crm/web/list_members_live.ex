@@ -258,16 +258,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
             count: @list.subscriber_count
           )
         }
-      >
-        <:actions>
-          <.link navigate={Paths.list_import(@list.uuid)} class="btn btn-outline btn-sm">
-            <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> {gettext("Import")}
-          </.link>
-          <.link navigate={Paths.list_edit(@list.uuid)} class="btn btn-ghost btn-sm">
-            <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Edit list")}
-          </.link>
-        </:actions>
-      </.admin_page_header>
+      />
 
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body gap-4">
@@ -328,33 +319,49 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
         </div>
       </div>
 
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <div role="tablist" class="tabs tabs-bordered">
-          <.link
-            patch={members_path(assigns, status: nil, page: 1)}
-            role="tab"
-            class={["tab", is_nil(@filter) && "tab-active"]}
-          >
-            {gettext("All")}
-          </.link>
-          <.link
-            patch={members_path(assigns, status: "subscribed", page: 1)}
-            role="tab"
-            class={["tab", @filter == "subscribed" && "tab-active"]}
-          >
-            {gettext("Subscribed")}
-          </.link>
-          <.link
-            patch={members_path(assigns, status: "removed", page: 1)}
-            role="tab"
-            class={["tab", @filter == "removed" && "tab-active"]}
-          >
-            {gettext("Removed")}
-          </.link>
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div role="tablist" class="tabs tabs-bordered">
+            <.link
+              patch={members_path(assigns, status: nil, page: 1)}
+              role="tab"
+              class={["tab", is_nil(@filter) && "tab-active"]}
+            >
+              {gettext("All")}
+            </.link>
+            <.link
+              patch={members_path(assigns, status: "subscribed", page: 1)}
+              role="tab"
+              class={["tab", @filter == "subscribed" && "tab-active"]}
+            >
+              {gettext("Subscribed")}
+            </.link>
+            <.link
+              patch={members_path(assigns, status: "removed", page: 1)}
+              role="tab"
+              class={["tab", @filter == "removed" && "tab-active"]}
+            >
+              {gettext("Removed")}
+            </.link>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <.link navigate={Paths.list_import(@list.uuid)} class="btn btn-outline btn-sm">
+              <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> {gettext("Import")}
+            </.link>
+            <.link navigate={Paths.list_edit(@list.uuid)} class="btn btn-ghost btn-sm">
+              <.icon name="hero-pencil" class="w-4 h-4" /> {gettext("Edit list")}
+            </.link>
+          </div>
         </div>
 
-        <div class="w-full sm:w-64">
-          <.search_toolbar name="search" value={@search} placeholder={gettext("Search email/name")} />
+        <div class="w-full sm:w-64 self-end">
+          <.search_toolbar
+            name="search"
+            value={@search}
+            placeholder={gettext("Search email/name")}
+            on_submit="search"
+          />
         </div>
       </div>
 
@@ -370,6 +377,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
           <.table_default_row>
             <.table_default_header_cell>{gettext("Contact")}</.table_default_header_cell>
             <.table_default_header_cell>{gettext("Email")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Locale")}</.table_default_header_cell>
             <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
             <.table_default_header_cell>{gettext("Source")}</.table_default_header_cell>
             <.table_default_header_cell class="text-right whitespace-nowrap">
@@ -390,6 +398,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
               <span :if={!member.contact} class="text-base-content/40">—</span>
             </.table_default_cell>
             <.table_default_cell class="text-base-content/70">{member.email || "—"}</.table_default_cell>
+            <.table_default_cell class="text-base-content/70">{member_locale(member)}</.table_default_cell>
             <.table_default_cell>{member_status_badge(member.status)}</.table_default_cell>
             <.table_default_cell class="text-base-content/70">{member.source}</.table_default_cell>
             <.table_default_cell class="text-right whitespace-nowrap">
@@ -442,6 +451,12 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
   defp contact_label(%Contact{} = contact), do: Contact.display_name(contact)
   defp contact_label(_), do: "—"
+
+  defp member_locale(%ListMember{contact: %Contact{locale: locale}})
+       when is_binary(locale) and locale != "",
+       do: locale
+
+  defp member_locale(_), do: "—"
 
   # `.status_badge` has no "subscribed" mapping (falls through to ghost/gray),
   # which reads as neutral rather than active — give it its own success color.
