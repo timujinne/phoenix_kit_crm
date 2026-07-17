@@ -296,11 +296,12 @@ defmodule PhoenixKitCRM.Lists do
   @doc """
   Batched counterpart to `get_member_by_email/2` — members (any status)
   holding any of the given `emails` in `list`, as an `%{email => member}`
-  map (`:contact` preloaded, same as the single-email version). One query
-  instead of N; built for `Lists.Import`'s dry-run preview, which used to
-  call `get_member_by_email/2` once per row — fine for a handful of rows,
-  but a file near the upload size limit could mean tens of thousands of
-  sequential round trips inside a single, unyielding LiveView event.
+  map. One query instead of N; built for `Lists.Import`'s dry-run preview,
+  which used to call `get_member_by_email/2` once per row — fine for a
+  handful of rows, but a file near the upload size limit could mean tens of
+  thousands of sequential round trips inside a single, unyielding LiveView
+  event. Unlike `get_member_by_email/2`, `:contact` is NOT preloaded here —
+  the only caller (`Import.preview_row/2`) classifies purely on `status`.
 
   Map keys are downcased (matching citext's case-insensitive comparison,
   but the *stored* `email` column value keeps whatever case it was written
@@ -314,7 +315,6 @@ defmodule PhoenixKitCRM.Lists do
     ListMember
     |> where([m], m.list_uuid == ^list.uuid and m.email in ^emails)
     |> repo().all()
-    |> repo().preload(:contact)
     |> Map.new(&{String.downcase(&1.email), &1})
   end
 

@@ -58,4 +58,32 @@ defmodule PhoenixKitCRM.Web.ListsLiveTest do
 
     assert Lists.get_list!(list.uuid).status == "archived"
   end
+
+  test "a list-scoped PubSub event from elsewhere still reloads this view", %{conn: conn} do
+    list = list_fixture(%{"name" => "Live Update Me"})
+
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists")
+    assert html =~ "Live Update Me"
+
+    # Archiving via the context directly (not through this view's own
+    # "archive" event handler) simulates another tab/session mutating the
+    # same list — the view must pick it up purely through the :list_archived
+    # broadcast on crm:lists.
+    {:ok, _} = Lists.archive_list(list)
+
+    refute render(view) =~ "Live Update Me"
+  end
+
+  test "a contact-scoped PubSub event (opt_out/opt_in) doesn't crash a mounted view", %{
+    conn: conn
+  } do
+    list = list_fixture()
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists")
+
+    send(view.pid, {:crm, :contact_opt_out, %{contact_uuid: Ecto.UUID.generate()}})
+    send(view.pid, {:crm, :contact_opt_in, %{contact_uuid: Ecto.UUID.generate()}})
+
+    assert Process.alive?(view.pid)
+    assert render(view) =~ list.name
+  end
 end

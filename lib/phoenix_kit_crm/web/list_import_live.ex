@@ -57,14 +57,24 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   end
 
   def handle_event("preview_upload", _params, socket) do
-    case consume_uploaded_entries(socket, :file, fn %{path: path}, entry ->
-           {:ok, {File.read!(path), entry.client_name}}
-         end) do
-      [{content, filename}] ->
-        start_preview(socket, parse_by_extension(content, filename), filename)
+    entries = socket.assigns.uploads.file.entries
 
-      [] ->
+    cond do
+      entries == [] ->
         {:noreply, put_flash(socket, :error, gettext("Choose a file first"))}
+
+      # The submit button's `disabled` is a client-side affordance only — a
+      # direct "preview_upload" event (devtools, a replayed/forged socket
+      # message) can still reach this handler mid-upload. entry.done? is
+      # false until the entry has actually finished transferring;
+      # consume_uploaded_entries/3 raises on an entry that isn't done, so
+      # this guard has to be server-side, not just the disabled= in the
+      # template.
+      not Enum.all?(entries, & &1.done?) ->
+        {:noreply, put_flash(socket, :error, gettext("Upload still in progress"))}
+
+      true ->
+        consume_and_preview_upload(socket)
     end
   end
 
@@ -127,6 +137,18 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────
+
+  defp consume_and_preview_upload(socket) do
+    case consume_uploaded_entries(socket, :file, fn %{path: path}, entry ->
+           {:ok, {File.read!(path), entry.client_name}}
+         end) do
+      [{content, filename}] ->
+        start_preview(socket, parse_by_extension(content, filename), filename)
+
+      [] ->
+        {:noreply, put_flash(socket, :error, gettext("Choose a file first"))}
+    end
+  end
 
   defp parse_by_extension(content, filename) do
     case filename |> Path.extname() |> String.downcase() do

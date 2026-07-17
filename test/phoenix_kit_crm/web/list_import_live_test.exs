@@ -99,6 +99,37 @@ defmodule PhoenixKitCRM.Web.ListImportLiveTest do
     assert length(Lists.list_members(list)) == 2
   end
 
+  test "submitting preview_upload before the upload finishes doesn't crash and consumes nothing",
+       %{conn: conn} do
+    list = list_fixture()
+    contact_count_before = length(Contacts.list_contacts())
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    file =
+      file_input(view, "#crm-import-upload-form", :file, [
+        %{
+          name: "contacts.csv",
+          content: "email,name\nalice@example.com,Alice\nbob@example.com,Bob\n",
+          type: "text/csv"
+        }
+      ])
+
+    # Only 50% chunked — the entry isn't done? yet. The submit button's
+    # disabled= is client-side only; a direct "preview_upload" event here
+    # simulates bypassing it (devtools, a forged socket message) while the
+    # upload is mid-flight.
+    refute render_upload(file, "contacts.csv", 50) =~ ~s(value="100")
+
+    html = view |> form("#crm-import-upload-form") |> render_submit()
+
+    assert Process.alive?(view.pid)
+    assert html =~ "Upload still in progress"
+    assert html =~ "Upload a file"
+    assert Lists.list_members(list) == []
+    assert length(Contacts.list_contacts()) == contact_count_before
+  end
+
   test "the report breaks skips out by bucket: already_in_list, invalid_email, no_email, duplicate_in_file",
        %{conn: conn} do
     list = list_fixture()

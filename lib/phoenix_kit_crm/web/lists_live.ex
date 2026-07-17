@@ -7,6 +7,12 @@ defmodule PhoenixKitCRM.Web.ListsLive do
   alias PhoenixKitCRM.PubSub, as: CRMPubSub
   alias PhoenixKitCRM.Schemas.ContactList
 
+  # crm:lists also carries contact-scoped events (:contact_opt_out,
+  # :contact_opt_in) that don't touch anything this index page renders
+  # (name/slug/subscribable/status/subscriber_count) — reload only for the
+  # events that can actually change one of those.
+  @list_events ~w(list_created list_updated list_archived list_unarchived list_recounted member_added member_removed)a
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: CRMPubSub.subscribe(CRMPubSub.topic_lists())
@@ -61,7 +67,11 @@ defmodule PhoenixKitCRM.Web.ListsLive do
   end
 
   @impl true
-  def handle_info({:crm, _event, _payload}, socket), do: {:noreply, load(socket)}
+  def handle_info({:crm, event, _payload}, socket) when event in @list_events do
+    {:noreply, load(socket)}
+  end
+
+  def handle_info({:crm, _event, _payload}, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
