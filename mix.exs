@@ -72,6 +72,15 @@ defmodule PhoenixKitCRM.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper,
       # Dashboard tabs, and the admin layout this module renders into.
+      #
+      # Stage-3 lists/import code on this branch (feature/crm-contact-lists)
+      # additionally requires core migration V152 (`email_send_profiles` +
+      # `crm_lists`/`crm_list_members` DDL) — not yet published to Hex as of
+      # 2026-07-17, so the floor below can't name it yet. Bump the floor to
+      # the exact hex version once core cuts a release containing V152;
+      # until then, a core built from `feature/email-send-profiles-core`
+      # (or later) is required — `PHOENIX_KIT_PATH=/app` (see `pk_dep/3`
+      # below) swaps it in locally without touching this pin.
       pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.189"),
 
       # Hard, compile-time dep for the contact profile's Comments tab

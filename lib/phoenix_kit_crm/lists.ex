@@ -188,22 +188,43 @@ defmodule PhoenixKitCRM.Lists do
     source = Keyword.get(opts, :source, "manual")
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    attrs = %{
-      "status" => "subscribed",
-      "subscribed_at" => now,
-      "unsubscribed_at" => nil,
-      "source" => source
-    }
+    # The WHERE guard and the write must be the SAME statement, or a
+    # SELECT-then-UPDATE has a TOCTOU window: two concurrent reactivations
+    # of the same removed/pending row could both read "not subscribed"
+    # before either commits, and both would then bump subscriber_count — a
+    # double-increment for one real reactivation. update_all bypasses
+    # ListMember.changeset/2, so this loses validate_inclusion/3 on
+    # :source (acceptable — :source only ever arrives from trusted internal
+    # callers, never raw form params — see add_contact_to_list/3's
+    # moduledoc) AND the changeset's unique_constraint/3 translation of a
+    # DB-level violation into a friendly error tuple, which the rescue
+    # below restores for :email — reactivating can still collide with a
+    # DIFFERENT row already holding this contact's (possibly since-changed)
+    # email in the same list.
+    {n, _} =
+      ListMember
+      |> where([m], m.uuid == ^existing.uuid and m.status != "subscribed")
+      |> repo().update_all(
+        set: [
+          status: "subscribed",
+          subscribed_at: now,
+          unsubscribed_at: nil,
+          source: source,
+          email: contact.email,
+          updated_at: now
+        ]
+      )
 
-    changeset =
-      existing
-      |> ListMember.changeset(attrs)
-      |> change(email: contact.email)
-
-    case repo().update(changeset) do
-      {:ok, member} -> finalize_added(member, list, contact, opts)
-      {:error, cs} -> classify_membership_error(cs)
+    case n do
+      1 -> finalize_added(repo().get!(ListMember, existing.uuid), list, contact, opts)
+      0 -> {:error, :already_member}
     end
+  rescue
+    e in Postgrex.Error ->
+      case e.postgres && e.postgres.constraint do
+        "idx_crm_list_members_list_email" -> {:error, :email_already_in_list}
+        _ -> reraise e, __STACKTRACE__
+      end
   end
 
   defp finalize_added(member, list, contact, opts) do
@@ -305,21 +326,19 @@ defmodule PhoenixKitCRM.Lists do
   Accepts either an existing `ListMember` directly, or a `contact` + `list`
   pair to look one up.
   """
-  @spec remove_from_list(ListMember.t(), keyword()) ::
-          {:ok, ListMember.t()} | {:error, Ecto.Changeset.t()}
+  @spec remove_from_list(ListMember.t(), keyword()) :: {:ok, ListMember.t()}
   def remove_from_list(member, opts \\ [])
   def remove_from_list(%ListMember{status: "removed"} = member, _opts), do: {:ok, member}
 
   def remove_from_list(%ListMember{} = member, opts) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
-    # "pending" members were never counted in the first place (only
-    # insert_member/reactivate_member's finalize_added bumps +1, landing on
-    # "subscribed") — decrementing here for one would drift the counter
-    # negative, so only a prior "subscribed" status pays this -1 back.
-    was_subscribed? = member.status == "subscribed"
 
-    case member |> change(status: "removed", unsubscribed_at: now) |> repo().update() do
-      {:ok, updated} = ok ->
+    case remove_member_row(member.uuid, now) do
+      :already_removed ->
+        {:ok, repo().get!(ListMember, member.uuid)}
+
+      was_subscribed? when is_boolean(was_subscribed?) ->
+        updated = repo().get!(ListMember, member.uuid)
         list = repo().get!(ContactList, updated.list_uuid)
         updated_list = if was_subscribed?, do: bump_counter(list, -1), else: list
 
@@ -331,10 +350,37 @@ defmodule PhoenixKitCRM.Lists do
         )
 
         PubSub.broadcast_list_event(:member_removed, member_payload(updated, updated_list))
-        ok
+        {:ok, updated}
+    end
+  end
 
-      error ->
-        error
+  # Atomic conditional-update pattern (same reasoning as reactivate_member/4
+  # below): the decision of "was this member subscribed" and the write
+  # itself must be the SAME statement, or two concurrent removes of the
+  # same member (two browser tabs) could both read "subscribed" before
+  # either commits and both decrement the counter. The first update_all
+  # only matches a row still "subscribed" at the moment it runs; if a
+  # concurrent call already flipped it, this one falls through to the
+  # "pending" branch instead of double-counting, and that one falls through
+  # to :already_removed if a THIRD concurrent call got there first.
+  #
+  # Returns true (was "subscribed", counter must move), false (was
+  # "pending", never counted), or :already_removed (idempotent no-op).
+  defp remove_member_row(uuid, now) do
+    {n_subscribed, _} =
+      ListMember
+      |> where([m], m.uuid == ^uuid and m.status == "subscribed")
+      |> repo().update_all(set: [status: "removed", unsubscribed_at: now, updated_at: now])
+
+    if n_subscribed == 1 do
+      true
+    else
+      {n_pending, _} =
+        ListMember
+        |> where([m], m.uuid == ^uuid and m.status != "removed")
+        |> repo().update_all(set: [status: "removed", unsubscribed_at: now, updated_at: now])
+
+      if n_pending == 1, do: false, else: :already_removed
     end
   end
 
@@ -345,7 +391,7 @@ defmodule PhoenixKitCRM.Lists do
   pass `[]` for no options.
   """
   @spec remove_from_list(Contact.t(), ContactList.t(), keyword()) ::
-          {:ok, ListMember.t()} | {:error, :not_member | Ecto.Changeset.t()}
+          {:ok, ListMember.t()} | {:error, :not_member}
   def remove_from_list(%Contact{} = contact, %ContactList{} = list, opts) do
     case get_member(list, contact) do
       nil -> {:error, :not_member}

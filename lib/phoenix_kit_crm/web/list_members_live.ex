@@ -130,13 +130,8 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
         {:noreply, socket}
 
       member ->
-        case Lists.remove_from_list(member, Activity.actor_opts(socket)) do
-          {:ok, _} ->
-            {:noreply, socket |> put_flash(:info, gettext("Member removed")) |> load_members()}
-
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, gettext("Could not remove this member"))}
-        end
+        {:ok, _} = Lists.remove_from_list(member, Activity.actor_opts(socket))
+        {:noreply, socket |> put_flash(:info, gettext("Member removed")) |> load_members()}
     end
   end
 

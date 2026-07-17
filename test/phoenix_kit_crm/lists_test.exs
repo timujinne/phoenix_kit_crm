@@ -330,6 +330,27 @@ defmodule PhoenixKitCRM.ListsTest do
       assert Lists.get_list!(list.uuid).subscriber_count == 0
     end
 
+    test "remove_from_list/2 called twice with the SAME stale struct does not double-decrement" do
+      # Regression for a TOCTOU: the old implementation decided whether to
+      # bump_counter(-1) from the passed-in struct's (possibly stale)
+      # status, then wrote via a separate `repo().update()` — two calls (or
+      # two concurrent processes) racing off the same pre-removal read
+      # could each see "subscribed" and each decrement. remove_from_list/2
+      # now makes the guard and the write one atomic update_all, so this
+      # SAME stale struct (still status: "subscribed", never re-fetched)
+      # must only pay the counter once.
+      contact = contact_fixture()
+      list = list_fixture()
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+      assert member.status == "subscribed"
+
+      assert {:ok, _} = Lists.remove_from_list(member)
+      assert Lists.get_list!(list.uuid).subscriber_count == 0
+
+      assert {:ok, _} = Lists.remove_from_list(member)
+      assert Lists.get_list!(list.uuid).subscriber_count == 0
+    end
+
     test "remove_from_list/3 (contact, list) looks up the membership" do
       contact = contact_fixture()
       list = list_fixture()
