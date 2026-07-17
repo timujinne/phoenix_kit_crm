@@ -114,21 +114,30 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
           _ -> false
         end
 
-      unless table_exists? do
+      column_exists? =
+        table_exists? and
+          Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue.crm_company_uuid_column?(
+            repo,
+            prefix
+          )
+
+      unless column_exists? do
         IO.puts(
-          "\n  Catalogue table absent — ImportSuppliersFromCatalogue integration tests skipped.\n"
+          "\n  cat_suppliers/crm_company_uuid absent (needs core >= 1.7.197) — " <>
+            "ImportSuppliersFromCatalogue integration tests skipped.\n"
         )
       end
 
-      {:ok, catalogue_available: table_exists?, prefix: prefix}
+      {:ok, catalogue_available: column_exists?, prefix: prefix}
     end
 
     setup %{catalogue_available: available} = ctx do
       if available do
         {:ok, Map.put(ctx, :repo, RepoHelper.repo())}
       else
-        # Return without error but tests that use catalogue_available: true will skip via tag
-        {:ok, ctx}
+        # ExUnit has no per-test dynamic skip from setup; mark the whole
+        # describe as skipped instead of letting tests MatchError.
+        {:ok, Map.put(ctx, :skip_all, true)}
       end
     end
 
@@ -183,7 +192,7 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
     end
 
     describe "match logic against seeded companies" do
-      test "matches an existing company by email (citext)", %{
+      test "matches an existing company by email (case-insensitive on both sides)", %{
         catalogue_available: true,
         repo: repo,
         prefix: prefix
@@ -191,7 +200,7 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
         {:ok, company} =
           Companies.create_company(%{
             "name" => "Email Match Co",
-            "email" => "sales@email-match.example"
+            "email" => "Sales@Email-Match.example"
           })
 
         supplier_uuid =
@@ -215,6 +224,17 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogueTest do
 
         assert result.action == :matched_by_email
         assert result.company_uuid == company.uuid
+
+        # Dry-run must not write: no supplier role granted, no stamp.
+        refute PhoenixKitCRM.PartyRoles.has_role?(company, "supplier")
+
+        %{rows: [[stamped]]} =
+          repo.query!(
+            "SELECT crm_company_uuid FROM #{prefix}.phoenix_kit_cat_suppliers WHERE uuid = $1",
+            [Ecto.UUID.dump!(supplier_uuid)]
+          )
+
+        assert is_nil(stamped)
       end
 
       test "matches an existing company by normalized website when no email match", %{

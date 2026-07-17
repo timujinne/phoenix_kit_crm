@@ -55,6 +55,16 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
       exit({:shutdown, 1})
     end
 
+    unless crm_company_uuid_column?(repo, prefix) do
+      Mix.shell().error(
+        "phoenix_kit_cat_suppliers.crm_company_uuid is missing — this task requires " <>
+          "phoenix_kit >= 1.7.197 (core migration V151). Upgrade the core dependency " <>
+          "and run mix phoenix_kit.update first."
+      )
+
+      exit({:shutdown, 1})
+    end
+
     suppliers = fetch_suppliers(repo, prefix)
 
     if suppliers == [] do
@@ -128,6 +138,36 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
     else
       do_process_supplier(sup, repo, prefix, apply?)
     end
+  rescue
+    e ->
+      # One bad row (grant failure, duplicate-email raise, stamp error) must
+      # not abort the run and suppress the report for the rows already done.
+      %{
+        name: sup.name,
+        status: sup.status,
+        uuid: sup.uuid,
+        action: :error,
+        company_uuid: nil,
+        error: Exception.message(e)
+      }
+  end
+
+  @doc false
+  def crm_company_uuid_column?(repo, prefix) do
+    %{rows: [[exists]]} =
+      repo.query!(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = $1
+          AND table_name = 'phoenix_kit_cat_suppliers'
+          AND column_name = 'crm_company_uuid'
+        )
+        """,
+        [prefix]
+      )
+
+    exists
   end
 
   defp already_linked?(%{crm_company_uuid: uuid}) when is_binary(uuid) and uuid != "", do: true
@@ -157,21 +197,21 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
   defp match_or_create_company(sup, candidate_email, candidate_website, apply?) do
     case find_company_by_email(candidate_email) do
       %Company{} = c -> {:matched_by_email, c}
-      nil -> match_by_website_or_create(sup, candidate_website, apply?)
+      nil -> match_by_website_or_create(sup, candidate_email, candidate_website, apply?)
     end
   end
 
-  defp match_by_website_or_create(sup, candidate_website, apply?) do
+  defp match_by_website_or_create(sup, candidate_email, candidate_website, apply?) do
     case find_company_by_website(candidate_website) do
       %Company{} = c -> {:matched_by_website, c}
-      nil -> maybe_create_company(sup, apply?)
+      nil -> maybe_create_company(sup, candidate_email, apply?)
     end
   end
 
-  defp maybe_create_company(_sup, false), do: {:would_create, nil}
+  defp maybe_create_company(_sup, _candidate_email, false), do: {:would_create, nil}
 
-  defp maybe_create_company(sup, true) do
-    case create_company_from_supplier(sup) do
+  defp maybe_create_company(sup, candidate_email, true) do
+    case create_company_from_supplier(sup, candidate_email) do
       {:ok, c} -> {:created, c}
       # Return nil as company so the apply? && company guard in do_process_supplier
       # short-circuits; the caller only records the action atom in the report.
@@ -183,24 +223,37 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
   defp find_company_by_email(""), do: nil
 
   defp find_company_by_email(email) do
-    # citext column handles case-insensitive comparison
-    RepoHelper.repo().get_by(Company, email: email)
+    # lower() on both sides: correct on any core version (V151 makes the column
+    # citext, but older installs are plain varchar). Trashed companies are
+    # excluded (CRM-wide convention); duplicate emails (the column carries no
+    # unique constraint) resolve to the oldest match instead of raising.
+    import Ecto.Query
+
+    Company
+    |> where([c], fragment("lower(?)", c.email) == ^String.downcase(email))
+    |> where([c], c.status != "trashed")
+    |> order_by([c], asc: c.inserted_at)
+    |> limit(1)
+    |> RepoHelper.repo().one()
   end
 
   defp find_company_by_website(nil), do: nil
   defp find_company_by_website(""), do: nil
 
   defp find_company_by_website(norm_website) do
+    find_company_by_website(norm_website, Application.get_env(:phoenix_kit, :prefix, "public"))
+  end
+
+  defp find_company_by_website(norm_website, prefix) when is_binary(prefix) do
     # Match by normalized website: strip scheme+www from the stored website column
     # and compare with the already-normalized input. Raw SQL is used here because
     # Ecto fragments interpret '?' as bind-parameter placeholders, colliding with
     # the '?' regex quantifier in '^https?://'.
-    prefix = Application.get_env(:phoenix_kit, :prefix, "public")
     table = "#{prefix}.phoenix_kit_crm_companies"
 
     sql = """
     SELECT uuid FROM #{table}
-    WHERE lower(regexp_replace(regexp_replace(website, '^https?://', ''), '^www\\.', ''))
+    WHERE regexp_replace(regexp_replace(lower(website), '^https?://', ''), '^www\\.', '')
           = $1
     AND status != 'trashed'
     LIMIT 1
@@ -212,9 +265,10 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
     end
   end
 
-  defp create_company_from_supplier(sup) do
+  defp create_company_from_supplier(sup, candidate_email) do
     Companies.create_company(%{
       "name" => sup.name,
+      "email" => candidate_email,
       "website" => sup.website,
       "notes" => sup.notes,
       "metadata" => %{
