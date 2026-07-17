@@ -88,6 +88,12 @@ defmodule PhoenixKitCRM.MixProject do
       # Ecto for the role-settings and per-user view-config schemas.
       {:ecto_sql, "~> 3.13"},
 
+      # CSV parsing for the contact-list import engine (Lists.Import). Pure
+      # Elixir, no NIFs — already resolved transitively via phoenix_kit, so
+      # declaring it directly here is zero extra footprint. XLSX support was
+      # evaluated (xlsxir) and deferred: it's unmaintained since 2019.
+      {:nimble_csv, "~> 1.2"},
+
       # Optional: add ex_doc for generating documentation
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
 

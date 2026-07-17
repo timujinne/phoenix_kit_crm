@@ -27,6 +27,7 @@ defmodule PhoenixKitCRM.Schemas.Contact do
   # Same format core's `User.validate_locale_value/1` checks, kept local so
   # this schema doesn't reach into core internals for it.
   @locale_format ~r/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
+  @email_format ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
   @type t :: %__MODULE__{
           uuid: UUIDv7.t() | nil,
@@ -112,14 +113,16 @@ defmodule PhoenixKitCRM.Schemas.Contact do
   defp maybe_validate_email(changeset) do
     case get_field(changeset, :email) do
       e when is_binary(e) and e != "" ->
-        validate_format(changeset, :email, ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/,
-          message: "must be a valid email"
-        )
+        validate_format(changeset, :email, @email_format, message: "must be a valid email")
 
       _ ->
         changeset
     end
   end
+
+  @doc "Whether `email` matches the same format the changeset validates against. Used by `PhoenixKitCRM.Lists.Import` to pre-check rows before attempting a write."
+  @spec valid_email?(String.t()) :: boolean()
+  def valid_email?(email) when is_binary(email), do: Regex.match?(@email_format, email)
 
   defp maybe_validate_locale(changeset) do
     case get_field(changeset, :locale) do

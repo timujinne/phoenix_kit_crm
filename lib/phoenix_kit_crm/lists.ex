@@ -32,6 +32,7 @@ defmodule PhoenixKitCRM.Lists do
 
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Activity
+  alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.PubSub
   alias PhoenixKitCRM.Schemas.{Contact, ContactList, ListMember}
 
@@ -175,6 +176,50 @@ defmodule PhoenixKitCRM.Lists do
       {:error, cs} ->
         classify_membership_error(cs)
     end
+  end
+
+  @doc """
+  Creates a brand-new contact and adds it to `list`, both in ONE transaction
+  — used by `PhoenixKitCRM.Lists.Import` so a membership-uniqueness violation
+  rolls back the just-created contact too (no orphan contacts on a
+  failed/duplicate import row). Delegates to `Contacts.create_contact/1` for
+  the contact insert and `add_contact_to_list/3` for the membership; never
+  duplicates either's logic.
+
+  Note: `add_contact_to_list/3`'s activity log + PubSub broadcast fire from
+  *inside* this transaction (right before it commits, not after) — an
+  acceptable, negligible-window tradeoff for reusing it here rather than
+  duplicating its insert + counter-bump logic.
+
+  Returns `{:error, :already_member}` / `{:error, :email_already_in_list}`
+  exactly like `add_contact_to_list/3` (structurally `:already_member` can't
+  actually happen here — the contact is always brand-new — but the type
+  stays honest about what `add_contact_to_list/3` can return), or
+  `{:error, changeset}` from a failed contact insert.
+  """
+  @spec add_new_contact_to_list(map(), ContactList.t(), keyword()) ::
+          {:ok, {Contact.t(), ListMember.t()}}
+          | {:error, :already_member | :email_already_in_list | Ecto.Changeset.t()}
+  def add_new_contact_to_list(contact_attrs, %ContactList{} = list, opts \\ []) do
+    repo().transaction(fn ->
+      with {:ok, contact} <- Contacts.create_contact(contact_attrs),
+           {:ok, member} <- add_contact_to_list(contact, list, opts) do
+        {contact, member}
+      else
+        {:error, reason} -> repo().rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  The member (any status) currently holding `email` in `list`, if any. Used
+  by the importer to classify an `idx_crm_list_members_list_email` violation
+  as `:already_in_list` (an active/pending member) vs `:unsubscribed` (a
+  `"removed"` member still holding the slot).
+  """
+  @spec get_member_by_email(ContactList.t(), String.t()) :: ListMember.t() | nil
+  def get_member_by_email(%ContactList{} = list, email) when is_binary(email) do
+    repo().get_by(ListMember, list_uuid: list.uuid, email: email)
   end
 
   @doc """
