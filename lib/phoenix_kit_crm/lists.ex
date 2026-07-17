@@ -254,14 +254,22 @@ defmodule PhoenixKitCRM.Lists do
   end
 
   @doc """
-  The member (any status) currently holding `email` in `list`, if any. Used
-  by the importer to classify an `idx_crm_list_members_list_email` violation
-  as `:already_in_list` (an active/pending member) vs `:unsubscribed` (a
-  `"removed"` member still holding the slot).
+  The member (any status) currently holding `email` in `list`, if any, with
+  `:contact` preloaded. Used by the importer to classify an
+  `idx_crm_list_members_list_email` violation as `:already_in_list` (an
+  active/pending member) vs `:unsubscribed` (a `"removed"` member still
+  holding the slot), and by the manual add-by-email form to offer a
+  "Resubscribe" affordance for the `:unsubscribed` case instead of a blocked
+  add (`add_new_contact_to_list/3` would just fail there — the slot is held).
   """
   @spec get_member_by_email(ContactList.t(), String.t()) :: ListMember.t() | nil
   def get_member_by_email(%ContactList{} = list, email) when is_binary(email) do
-    repo().get_by(ListMember, list_uuid: list.uuid, email: email)
+    ListMember
+    |> repo().get_by(list_uuid: list.uuid, email: email)
+    |> case do
+      nil -> nil
+      member -> repo().preload(member, :contact)
+    end
   end
 
   @doc """

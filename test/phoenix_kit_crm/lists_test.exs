@@ -277,8 +277,23 @@ defmodule PhoenixKitCRM.ListsTest do
       assert {:ok, reactivated} =
                Lists.add_contact_to_list(contact, list, actor_uuid: actor_uuid)
 
-      assert_receive {:crm, :member_added, %{member_uuid: member_uuid, subscriber_count: 1}}
-      assert member_uuid == reactivated.uuid
+      list_uuid = list.uuid
+      reactivated_uuid = reactivated.uuid
+
+      # "crm:lists" is a real, global (non-sandboxed) PubSub topic shared by
+      # every async test that mutates a list, so a stray broadcast from an
+      # unrelated concurrent test (e.g. another test's own "first member
+      # added, count=1") can otherwise satisfy an unpinned pattern here —
+      # pin list_uuid/member_uuid to the values THIS test just produced
+      # instead of capturing whatever arrives first. Generous timeout for
+      # scheduler jitter under that same concurrent load.
+      assert_receive {:crm, :member_added,
+                      %{
+                        list_uuid: ^list_uuid,
+                        member_uuid: ^reactivated_uuid,
+                        subscriber_count: 1
+                      }},
+                     1000
 
       assert_activity_logged("crm.list_member_added",
         resource_uuid: reactivated.uuid,
@@ -431,32 +446,35 @@ defmodule PhoenixKitCRM.ListsTest do
       list = list_fixture()
 
       {:ok, member} = Lists.add_contact_to_list(contact, list)
+      list_uuid = list.uuid
+      member_uuid = member.uuid
 
+      # See the comment on the reactivation test above re: pinning the
+      # expected uuids (this topic is shared, non-sandboxed, global state)
+      # and the generous timeout for scheduler jitter under that load.
       assert_receive {:crm, :member_added,
-                      %{list_uuid: list_uuid, member_uuid: member_uuid, subscriber_count: 1}}
-
-      assert list_uuid == list.uuid
-      assert member_uuid == member.uuid
+                      %{list_uuid: ^list_uuid, member_uuid: ^member_uuid, subscriber_count: 1}},
+                     1000
     end
 
     test "remove_from_list broadcasts :member_removed with the decremented counter" do
       contact = contact_fixture()
       list = list_fixture()
       {:ok, member} = Lists.add_contact_to_list(contact, list)
+      list_uuid = list.uuid
 
       PubSub.subscribe(PubSub.topic_lists())
       {:ok, _} = Lists.remove_from_list(member)
 
-      assert_receive {:crm, :member_removed, %{list_uuid: list_uuid, subscriber_count: 0}}
-      assert list_uuid == list.uuid
+      assert_receive {:crm, :member_removed, %{list_uuid: ^list_uuid, subscriber_count: 0}}, 1000
     end
 
     test "create_list broadcasts :list_created" do
       PubSub.subscribe(PubSub.topic_lists())
       {:ok, list} = Lists.create_list(%{"name" => "Broadcast Me"})
+      list_uuid = list.uuid
 
-      assert_receive {:crm, :list_created, %{list_uuid: list_uuid}}
-      assert list_uuid == list.uuid
+      assert_receive {:crm, :list_created, %{list_uuid: ^list_uuid}}, 1000
     end
   end
 end

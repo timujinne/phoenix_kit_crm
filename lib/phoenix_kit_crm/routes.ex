@@ -26,6 +26,8 @@ defmodule PhoenixKitCRM.Routes do
     contact_show = Web.ContactShowLive
     company_form = Web.CompanyFormLive
     company_show = Web.CompanyShowLive
+    list_form = Web.ListFormLive
+    list_members = Web.ListMembersLive
 
     quote do
       live("/admin/crm/role/:role_uuid", unquote(role_view), :index,
@@ -56,6 +58,19 @@ defmodule PhoenixKitCRM.Routes do
 
       live("/admin/crm/companies/:uuid", unquote(company_show), :show,
         as: :"crm_company_show#{unquote(suffix)}"
+      )
+
+      # Lists — `new` must precede `:uuid` so it isn't captured as an id.
+      live("/admin/crm/lists/new", unquote(list_form), :new,
+        as: :"crm_list_new#{unquote(suffix)}"
+      )
+
+      live("/admin/crm/lists/:uuid/edit", unquote(list_form), :edit,
+        as: :"crm_list_edit#{unquote(suffix)}"
+      )
+
+      live("/admin/crm/lists/:uuid/members", unquote(list_members), :index,
+        as: :"crm_list_members#{unquote(suffix)}"
       )
     end
   end
