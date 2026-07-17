@@ -173,7 +173,9 @@ defmodule Mix.Tasks.PhoenixKitCrm.ImportSuppliersFromCatalogue do
   defp maybe_create_company(sup, true) do
     case create_company_from_supplier(sup) do
       {:ok, c} -> {:created, c}
-      {:error, cs} -> {:error_creating, {:error, inspect(cs.errors)}}
+      # Return nil as company so the apply? && company guard in do_process_supplier
+      # short-circuits; the caller only records the action atom in the report.
+      {:error, _cs} -> {:error_creating, nil}
     end
   end
 
