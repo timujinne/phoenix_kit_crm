@@ -363,6 +363,11 @@ defmodule PhoenixKitCRM.Lists do
     repo().get_by(ListMember, list_uuid: list.uuid, contact_uuid: contact.uuid)
   end
 
+  # A single INSERT/UPDATE can only ever trip one of these two unique
+  # constraints, so there's no real ambiguity between the branches below —
+  # whichever one Postgres actually reports is the one that gets an error
+  # added to `errors` by the matching `unique_constraint/3` in
+  # `ListMember.changeset/2`.
   defp classify_membership_error(%Ecto.Changeset{errors: errors} = cs) do
     cond do
       Keyword.has_key?(errors, :email) ->
