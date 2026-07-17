@@ -42,7 +42,7 @@ defmodule PhoenixKitCRM do
   end
 
   @impl PhoenixKit.Module
-  def version, do: "0.2.4"
+  def version, do: "0.2.5"
 
   @impl PhoenixKit.Module
   def permission_metadata do

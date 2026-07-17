@@ -4,6 +4,83 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.5] - 2026-07-17
+
+First release of the CRM v2 party-roles work (PRs #9-#12): companies and
+contacts can now hold commercial `supplier`/`client`/`partner` roles, schemas
+carry `PhoenixKit.SchemaPrefix` for named-schema (`--prefix`) installs, and a
+one-time backfill task migrates catalogue suppliers into CRM. Requires
+`phoenix_kit >= 1.7.197` (the core migration shipping
+`phoenix_kit_crm_party_roles` and `phoenix_kit_cat_suppliers.crm_company_uuid`).
+
+### Added
+
+- **`PhoenixKitCRM.PartyRoles`** — grant/revoke `supplier`, `client`, `partner`
+  roles on a company or contact (soft-ref polymorphic rows, idempotent grant,
+  revoke keeps history instead of deleting). Roles checkboxes on both
+  company/contact forms; role badges + filter tabs on both list pages.
+  Mutations log `crm.party_role_granted` / `crm.party_role_revoked` with the
+  acting user's `actor_uuid`.
+- **`mix phoenix_kit_crm.import_suppliers_from_catalogue`** — one-time,
+  dry-run-by-default backfill: matches each `phoenix_kit_cat_suppliers` row to
+  an existing CRM company by email then normalized website, creates a company
+  otherwise, grants the `supplier` role, and stamps `crm_company_uuid` back
+  onto the catalogue row. Idempotent; guarded against a missing catalogue
+  table or an out-of-date core (`crm_company_uuid` column absent).
+- `use PhoenixKit.SchemaPrefix` on every table-backed schema (`RoleSetting`,
+  `Company`, `CompanyMembership`, `Contact`, `Interaction`, `InteractionParty`,
+  `UserRoleViewConfig`, `PartyRole`) — a no-op unless the host app configures
+  `:phoenix_kit, :prefix`. A conformance test enforces it repo-wide.
+- `dev_docs/design/crm_v2_parties_suppliers_clients.md` — the design spec this
+  release implements Phases 1 and 3 of (Phase 2's catalogue-side resolver and
+  Phase 4's client/warehouse seam are future work).
+
+### Changed
+
+- Involved-parties search (`interactions_component.ex`) switched from a
+  hand-rolled `PartyPicker` JS hook to core's `<.search_picker>` component;
+  the old hook's static asset was deleted.
+- `phoenix_kit` dependency floor raised `~> 1.7 and >= 1.7.189` →
+  `>= 1.7.197`.
+
+### Fixed
+
+- Party-role grant/revoke activity log entries now record the acting user's
+  `actor_uuid` instead of always logging `nil`.
+- `ContactFormLive`'s partial-role-failure path re-reads persisted role state
+  from the DB before re-rendering (was showing stale checkbox state;
+  `CompanyFormLive` already did this correctly).
+- Supplier-import email matching lowercases both sides of the comparison (works
+  whether the core migration has promoted the column to `citext` or not),
+  excludes trashed companies, and resolves duplicate emails to the oldest
+  match instead of raising; website matching lowercases before stripping the
+  scheme/`www.` prefix so uppercase stored URLs normalize the same as the
+  Elixir-side helper.
+- Supplier-import per-row processing: a grant/stamp/match failure on one row
+  records an `:error` row and the run continues instead of aborting — the
+  report always prints. The report's `errors:` total previously only counted
+  failed company-creation (`:error_creating`), silently dropping these
+  rescued-exception rows from the summary; it now counts both.
+- `mix dialyzer` — added `:mix` to `plt_add_apps` (`mix.exs`). The supplier
+  backfill task is this repo's first file under `lib/mix/tasks/`, and without
+  `:mix` in the PLT, dialyzer couldn't resolve `Mix.Task`'s callbacks or
+  `Mix.shell/0`/`Mix.Task.run/1`, failing the release gate.
+- `mix credo --strict` — a test call site spelled out the task's fully
+  qualified module name instead of using the alias already in scope,
+  tripping Credo's nested-module-aliasing check and (like the dialyzer issue
+  above) failing the release gate.
+
+### Notes
+
+- Integration tests (the CRM DB round-trips, including all of
+  `party_roles_test.exs` and the supplier-import task's DB-backed cases)
+  could not run in this release's build environment (no Postgres available);
+  per this repo's documented stance they auto-exclude and only the pure-logic
+  unit tests ran. They're expected to run in CI / against a real core
+  checkout before this reaches production installs.
+- Review docs: `dev_docs/pull_requests/2026/{10-crm-party-roles,
+  11-schema-prefix,12-import-suppliers-backfill}/CLAUDE_REVIEW.md`.
+
 ## [0.2.4] - 2026-06-28
 
 Post-merge review fixes for the interaction-tracker buildout (PR #8) —
