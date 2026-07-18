@@ -18,6 +18,7 @@ defmodule PhoenixKitCRM.Contacts do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Schemas.{CompanyMembership, Contact}
+  alias PhoenixKitCRM.Search
   alias PhoenixKitCRM.SoftDelete
 
   defp repo, do: RepoHelper.repo()
@@ -183,7 +184,7 @@ defmodule PhoenixKitCRM.Contacts do
     if q == "" do
       []
     else
-      like = like_pattern(q)
+      like = Search.like_pattern(q)
 
       Contact
       |> where([c], c.status != "trashed")
@@ -197,19 +198,6 @@ defmodule PhoenixKitCRM.Contacts do
 
   defp maybe_exclude_uuids(query, []), do: query
   defp maybe_exclude_uuids(query, uuids), do: where(query, [c], c.uuid not in ^uuids)
-
-  # Wrap a trimmed search term in `%…%`, escaping the LIKE/ILIKE metacharacters
-  # (`\`, `%`, `_`) so a literal `%` matches a percent sign rather than acting as
-  # a wildcard. Postgres ILIKE uses backslash as the default escape character.
-  defp like_pattern(q) do
-    escaped =
-      q
-      |> String.replace("\\", "\\\\")
-      |> String.replace("%", "\\%")
-      |> String.replace("_", "\\_")
-
-    "%#{escaped}%"
-  end
 
   # ── Company membership (v1: a single primary company per contact) ───
 
@@ -341,7 +329,7 @@ defmodule PhoenixKitCRM.Contacts do
   defp maybe_search_contacts(query, opts) do
     case Keyword.get(opts, :search) do
       term when is_binary(term) and term != "" ->
-        like = like_pattern(term)
+        like = Search.like_pattern(term)
         where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
 
       _ ->

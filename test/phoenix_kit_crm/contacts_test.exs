@@ -117,6 +117,22 @@ defmodule PhoenixKitCRM.ContactsTest do
       paged = Contacts.list_contacts(search: "wonder", limit: 1, offset: 0)
       assert length(paged) == 1
     end
+
+    test "escapes LIKE wildcards so % and _ match literally, not everything" do
+      pct = contact_fixture(%{"name" => "50% Off Sam"})
+      underscore = contact_fixture(%{"name" => "under_score"})
+      plain = contact_fixture(%{"name" => "Plain Sam"})
+
+      pct_uuids = Contacts.list_contacts(search: "%") |> Enum.map(& &1.uuid)
+      assert pct.uuid in pct_uuids
+      refute plain.uuid in pct_uuids
+      refute underscore.uuid in pct_uuids
+
+      underscore_uuids = Contacts.list_contacts(search: "_") |> Enum.map(& &1.uuid)
+      assert underscore.uuid in underscore_uuids
+      refute plain.uuid in underscore_uuids
+      refute pct.uuid in underscore_uuids
+    end
   end
 
   describe "list_by_uuids/1" do

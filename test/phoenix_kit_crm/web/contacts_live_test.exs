@@ -100,7 +100,7 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
          %{conn: conn} do
       {:ok, _} = Contacts.create_contact(%{"name" => "Solo Contact"})
 
-      for bad <- ["abc", "", "1.5", "1abc", "-1e5"] do
+      for bad <- ["abc", "", "1.5", "1abc", "-1e5", "0"] do
         assert {:ok, _view, html} = live(conn, "/en/admin/crm/contacts?page=#{bad}")
         assert html =~ "Solo Contact"
       end

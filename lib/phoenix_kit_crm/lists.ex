@@ -35,6 +35,7 @@ defmodule PhoenixKitCRM.Lists do
   alias PhoenixKitCRM.Contacts
   alias PhoenixKitCRM.PubSub
   alias PhoenixKitCRM.Schemas.{Contact, ContactList, ListMember}
+  alias PhoenixKitCRM.Search
 
   defp repo, do: RepoHelper.repo()
 
@@ -592,7 +593,7 @@ defmodule PhoenixKitCRM.Lists do
   defp maybe_search_members(query, opts) do
     case Keyword.get(opts, :search) do
       term when is_binary(term) and term != "" ->
-        like = "%#{term}%"
+        like = Search.like_pattern(term)
 
         query
         |> join(:left, [m], c in Contact, on: c.uuid == m.contact_uuid)

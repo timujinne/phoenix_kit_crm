@@ -60,7 +60,7 @@ defmodule PhoenixKitCRM.Web.CompaniesLiveTest do
          %{conn: conn} do
       {:ok, _} = Companies.create_company(%{"name" => "Solo Company"})
 
-      for bad <- ["abc", "", "1.5", "1abc", "-1e5"] do
+      for bad <- ["abc", "", "1.5", "1abc", "-1e5", "0"] do
         assert {:ok, _view, html} = live(conn, "/en/admin/crm/companies?page=#{bad}")
         assert html =~ "Solo Company"
       end

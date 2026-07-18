@@ -387,6 +387,23 @@ defmodule PhoenixKitCRM.ListsTest do
       by_email = Lists.list_members(list, search: "bob@")
       assert Enum.map(by_email, & &1.uuid) == [bob_member.uuid]
     end
+
+    test "escapes LIKE wildcards so % and _ match literally, not everything" do
+      list = list_fixture()
+      pct = contact_fixture(%{"name" => "50% Off Sam"})
+      underscore = contact_fixture(%{"name" => "under_score"})
+      plain = contact_fixture(%{"name" => "Plain Sam"})
+
+      {:ok, pct_member} = Lists.add_contact_to_list(pct, list)
+      {:ok, underscore_member} = Lists.add_contact_to_list(underscore, list)
+      {:ok, _plain_member} = Lists.add_contact_to_list(plain, list)
+
+      pct_uuids = list |> Lists.list_members(search: "%") |> Enum.map(& &1.uuid)
+      assert pct_uuids == [pct_member.uuid]
+
+      underscore_uuids = list |> Lists.list_members(search: "_") |> Enum.map(& &1.uuid)
+      assert underscore_uuids == [underscore_member.uuid]
+    end
   end
 
   describe "counter maintenance" do

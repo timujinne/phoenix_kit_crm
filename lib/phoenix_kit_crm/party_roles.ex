@@ -16,6 +16,7 @@ defmodule PhoenixKitCRM.PartyRoles do
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Activity
   alias PhoenixKitCRM.Schemas.{Company, Contact, PartyRole}
+  alias PhoenixKitCRM.Search
 
   defp repo, do: RepoHelper.repo()
 
@@ -247,7 +248,7 @@ defmodule PhoenixKitCRM.PartyRoles do
   defp maybe_search_roleable(query, opts) do
     case Keyword.get(opts, :search) do
       term when is_binary(term) and term != "" ->
-        like = like_pattern(term)
+        like = Search.like_pattern(term)
         where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
 
       _ ->
@@ -266,22 +267,6 @@ defmodule PhoenixKitCRM.PartyRoles do
 
   defp maybe_offset(query, nil), do: query
   defp maybe_offset(query, offset), do: offset(query, ^offset)
-
-  # Wrap a trimmed search term in `%…%`, escaping the LIKE/ILIKE metacharacters
-  # (`\`, `%`, `_`) so a literal `%` matches a percent sign rather than acting
-  # as a wildcard. Postgres ILIKE uses backslash as the default escape
-  # character. Mirrors `Contacts.like_pattern/1` — small enough, and this
-  # context has no dependency on `Contacts`, that duplicating it beats adding
-  # cross-context coupling for one helper.
-  defp like_pattern(term) do
-    escaped =
-      term
-      |> String.replace("\\", "\\\\")
-      |> String.replace("%", "\\%")
-      |> String.replace("_", "\\_")
-
-    "%#{escaped}%"
-  end
 
   @doc """
   Resolver entry point for the (future) Catalogue supplier facade: given a
