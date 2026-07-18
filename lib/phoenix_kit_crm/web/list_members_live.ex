@@ -55,7 +55,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
         _ -> nil
       end
 
-    page = max(String.to_integer(params["page"] || "1"), 1)
+    page = parse_page(params["page"])
     search = params["search"] || ""
 
     {:noreply,
@@ -178,6 +178,20 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # `String.to_integer/1` raises on anything non-numeric — a fat-fingered
+  # bookmark or a crawler hitting `?page=abc` (or a stray trailing
+  # `?page=`) would crash the LiveView. `Integer.parse/1` doesn't raise;
+  # anything it can't read at all (or the `nil` from no param) falls back
+  # to page 1.
+  defp parse_page(nil), do: 1
+
+  defp parse_page(param) do
+    case Integer.parse(param) do
+      {n, _rest} -> max(n, 1)
+      :error -> 1
+    end
+  end
 
   defp blank_add_form,
     do: to_form(%{"email" => "", "name" => "", "locale" => ""}, as: :add_member)

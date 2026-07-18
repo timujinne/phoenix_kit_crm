@@ -238,4 +238,23 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
       assert member.contact.locale == "fr"
     end
   end
+
+  describe "pagination" do
+    # Regression: String.to_integer/1 raises on anything non-numeric, so a
+    # fat-fingered bookmark or a crawler hitting ?page=abc used to crash
+    # this LiveView outright — mount must survive and fall back to page 1.
+    test "a non-numeric ?page= param doesn't crash the mount, falls back to page 1",
+         %{conn: conn} do
+      list = list_fixture()
+      contact = contact_fixture(%{"name" => "Solo Member"})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      for bad <- ["abc", "", "1.5", "1abc", "-1e5"] do
+        assert {:ok, _view, html} =
+                 live(conn, "/en/admin/crm/lists/#{list.uuid}/members?page=#{bad}")
+
+        assert html =~ "Solo Member"
+      end
+    end
+  end
 end

@@ -92,6 +92,30 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
 
       refute has_element?(view, "a", "2")
     end
+
+    # Regression: String.to_integer/1 raises on anything non-numeric, so a
+    # fat-fingered bookmark or a crawler hitting ?page=abc used to crash
+    # this LiveView outright — mount must survive and fall back to page 1.
+    test "a non-numeric ?page= param doesn't crash the mount, falls back to page 1",
+         %{conn: conn} do
+      {:ok, _} = Contacts.create_contact(%{"name" => "Solo Contact"})
+
+      for bad <- ["abc", "", "1.5", "1abc", "-1e5"] do
+        assert {:ok, _view, html} = live(conn, "/en/admin/crm/contacts?page=#{bad}")
+        assert html =~ "Solo Contact"
+      end
+    end
+
+    test "a page past the last one shows 'no results on this page', not 'no contacts at all'",
+         %{conn: conn} do
+      {:ok, _} = Contacts.create_contact(%{"name" => "Solo Contact"})
+
+      {:ok, _view, html} = live(conn, "/en/admin/crm/contacts?page=999")
+
+      refute html =~ "Solo Contact"
+      assert html =~ "No contacts on this page."
+      refute html =~ "No contacts yet."
+    end
   end
 
   describe "search" do

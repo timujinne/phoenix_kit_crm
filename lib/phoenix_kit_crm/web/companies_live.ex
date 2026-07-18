@@ -35,7 +35,7 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         _ -> "active"
       end
 
-    page = max(String.to_integer(params["page"] || "1"), 1)
+    page = parse_page(params["page"])
     search = params["search"] || ""
 
     {:noreply,
@@ -143,15 +143,11 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
       <.empty_state
         :if={@companies == []}
         icon="hero-building-office-2"
-        title={
-          if @search != "",
-            do: gettext("No companies match your search."),
-            else: gettext("No companies yet.")
-        }
+        title={empty_title(@total_count, @search)}
         variant="card"
       >
         <.link
-          :if={@search == "" and @filter == "active"}
+          :if={@total_count == 0 and @search == "" and @filter == "active"}
           navigate={Paths.company_new()}
           class="btn btn-primary"
         >
@@ -262,6 +258,28 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # `String.to_integer/1` raises on anything non-numeric — a fat-fingered
+  # bookmark or a crawler hitting `?page=abc` (or a stray trailing
+  # `?page=`) would crash the LiveView. `Integer.parse/1` doesn't raise;
+  # anything it can't read at all (or the `nil` from no param) falls back
+  # to page 1.
+  defp parse_page(nil), do: 1
+
+  defp parse_page(param) do
+    case Integer.parse(param) do
+      {n, _rest} -> max(n, 1)
+      :error -> 1
+    end
+  end
+
+  # Distinguishes a genuinely empty result from an empty PAGE of a non-empty
+  # one (a stale pagination link after a bulk delete, or a page number past
+  # the end) — "No companies yet." would be actively misleading if there are
+  # more companies total and this is just a later page.
+  defp empty_title(0, ""), do: gettext("No companies yet.")
+  defp empty_title(0, _search), do: gettext("No companies match your search.")
+  defp empty_title(_total_count, _search), do: gettext("No companies on this page.")
 
   # Takes an assigns-shaped map — either a LiveView `socket.assigns` (from an
   # event handler) or the `assigns` passed into `render/1` (from the

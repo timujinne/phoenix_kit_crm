@@ -52,6 +52,30 @@ defmodule PhoenixKitCRM.Web.CompaniesLiveTest do
       refute html2 =~ "Company 01"
       assert html2 =~ "Company 26"
     end
+
+    # Regression: String.to_integer/1 raises on anything non-numeric, so a
+    # fat-fingered bookmark or a crawler hitting ?page=abc used to crash
+    # this LiveView outright — mount must survive and fall back to page 1.
+    test "a non-numeric ?page= param doesn't crash the mount, falls back to page 1",
+         %{conn: conn} do
+      {:ok, _} = Companies.create_company(%{"name" => "Solo Company"})
+
+      for bad <- ["abc", "", "1.5", "1abc", "-1e5"] do
+        assert {:ok, _view, html} = live(conn, "/en/admin/crm/companies?page=#{bad}")
+        assert html =~ "Solo Company"
+      end
+    end
+
+    test "a page past the last one shows 'no results on this page', not 'no companies at all'",
+         %{conn: conn} do
+      {:ok, _} = Companies.create_company(%{"name" => "Solo Company"})
+
+      {:ok, _view, html} = live(conn, "/en/admin/crm/companies?page=999")
+
+      refute html =~ "Solo Company"
+      assert html =~ "No companies on this page."
+      refute html =~ "No companies yet."
+    end
   end
 
   describe "search" do
