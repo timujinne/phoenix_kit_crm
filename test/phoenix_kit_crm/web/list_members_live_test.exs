@@ -256,5 +256,22 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
         assert html =~ "Solo Member"
       end
     end
+
+    # This page has no COUNT-backed total_pages (it peeks at limit+1 to
+    # derive has_more?), so a huge out-of-range page can't be clamped against
+    # a known last page — it comes back empty. Falling back to page 1 instead
+    # of just showing an empty table is the same "don't strand the user on a
+    # dead page" fix as contacts/companies get from real clamping.
+    test "a huge page number with no results falls back to page 1's members",
+         %{conn: conn} do
+      list = list_fixture()
+      contact = contact_fixture(%{"name" => "Solo Member"})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      {:ok, _view, html} =
+        live(conn, "/en/admin/crm/lists/#{list.uuid}/members?page=9999999999")
+
+      assert html =~ "Solo Member"
+    end
   end
 end

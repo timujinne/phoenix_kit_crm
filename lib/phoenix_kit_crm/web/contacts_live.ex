@@ -232,31 +232,41 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
   # ── Private helpers ─────────────────────────────────────────────────
 
   defp load(socket) do
-    %{filter: filter, page: page, search: search} = socket.assigns
+    %{filter: filter, page: requested_page, search: search} = socket.assigns
     search_opt = if search == "", do: nil, else: search
+    count_opts = [] |> maybe_put(:search, search_opt)
+
+    # Count first so an out-of-range page (a stale bookmark, a bulk delete
+    # that shrank the last page, or a forged/crawled ?page= value) can be
+    # clamped down to the actual last page BEFORE fetching — otherwise the
+    # user lands on a page that's genuinely empty with no explanation, and
+    # (before the pagination component's own clamp) the page number could
+    # even feed straight into `<.pagination>`'s range math.
+    total_count =
+      case filter do
+        "trashed" -> Contacts.count_contacts([status: "trashed"] ++ count_opts)
+        role when role in @role_filters -> PartyRoles.count_contacts_with_role(role, count_opts)
+        _ -> Contacts.count_contacts(count_opts)
+      end
+
+    total_pages = max(ceil(total_count / @page_size), 1)
+    page = min(requested_page, total_pages)
 
     page_opts =
       [limit: @page_size, offset: (page - 1) * @page_size] |> maybe_put(:search, search_opt)
 
-    {contacts, total_count} =
+    contacts =
       case filter do
-        "trashed" ->
-          {Contacts.list_contacts([status: "trashed"] ++ page_opts),
-           Contacts.count_contacts([status: "trashed"] |> maybe_put(:search, search_opt))}
-
-        role when role in @role_filters ->
-          {PartyRoles.list_contacts_with_role(role, page_opts),
-           PartyRoles.count_contacts_with_role(role, [] |> maybe_put(:search, search_opt))}
-
-        _ ->
-          {Contacts.list_contacts(page_opts),
-           Contacts.count_contacts([] |> maybe_put(:search, search_opt))}
+        "trashed" -> Contacts.list_contacts([status: "trashed"] ++ page_opts)
+        role when role in @role_filters -> PartyRoles.list_contacts_with_role(role, page_opts)
+        _ -> Contacts.list_contacts(page_opts)
       end
 
     socket
+    |> assign(:page, page)
     |> assign(:contacts, contacts)
     |> assign(:total_count, total_count)
-    |> assign(:total_pages, max(ceil(total_count / @page_size), 1))
+    |> assign(:total_pages, total_pages)
     |> assign(:roles_map, PartyRoles.active_roles_map("contact", Enum.map(contacts, & &1.uuid)))
     |> assign(:trashed_count, Contacts.count_contacts(status: "trashed"))
   end

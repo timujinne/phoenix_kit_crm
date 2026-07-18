@@ -106,15 +106,33 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
       end
     end
 
-    test "a page past the last one shows 'no results on this page', not 'no contacts at all'",
+    test "a page past the last one clamps down to the real last page instead of showing empty",
          %{conn: conn} do
       {:ok, _} = Contacts.create_contact(%{"name" => "Solo Contact"})
 
       {:ok, _view, html} = live(conn, "/en/admin/crm/contacts?page=999")
 
-      refute html =~ "Solo Contact"
-      assert html =~ "No contacts on this page."
+      assert html =~ "Solo Contact"
       refute html =~ "No contacts yet."
+      refute html =~ "No contacts on this page."
+    end
+
+    # With more than one real page, the clamp must land on the ACTUAL last
+    # page (2, holding "Contact 26"), not just fall back to page 1 — this is
+    # also the exact shape of the reported OOM crash
+    # (GET /admin/crm/contacts?page=9999999999): a huge, out-of-range page
+    # number against a small total_pages must resolve to real data, not an
+    # empty page or a runaway range.
+    test "a huge page number clamps to the real last page, not page 1", %{conn: conn} do
+      for n <- 1..26 do
+        {:ok, _} =
+          Contacts.create_contact(%{"name" => "Contact #{String.pad_leading("#{n}", 2, "0")}"})
+      end
+
+      {:ok, _view, html} = live(conn, "/en/admin/crm/contacts?page=9999999999")
+
+      refute html =~ "Contact 01"
+      assert html =~ "Contact 26"
     end
   end
 

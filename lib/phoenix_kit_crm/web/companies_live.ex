@@ -224,31 +224,41 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   # ── Private helpers ─────────────────────────────────────────────────
 
   defp load(socket) do
-    %{filter: filter, page: page, search: search} = socket.assigns
+    %{filter: filter, page: requested_page, search: search} = socket.assigns
     search_opt = if search == "", do: nil, else: search
+    count_opts = [] |> maybe_put(:search, search_opt)
+
+    # Count first so an out-of-range page (a stale bookmark, a bulk delete
+    # that shrank the last page, or a forged/crawled ?page= value) can be
+    # clamped down to the actual last page BEFORE fetching — otherwise the
+    # user lands on a page that's genuinely empty with no explanation, and
+    # (before the pagination component's own clamp) the page number could
+    # even feed straight into `<.pagination>`'s range math.
+    total_count =
+      case filter do
+        "trashed" -> Companies.count_companies([status: "trashed"] ++ count_opts)
+        role when role in @role_filters -> PartyRoles.count_companies_with_role(role, count_opts)
+        _ -> Companies.count_companies(count_opts)
+      end
+
+    total_pages = max(ceil(total_count / @page_size), 1)
+    page = min(requested_page, total_pages)
 
     page_opts =
       [limit: @page_size, offset: (page - 1) * @page_size] |> maybe_put(:search, search_opt)
 
-    {companies, total_count} =
+    companies =
       case filter do
-        "trashed" ->
-          {Companies.list_companies([status: "trashed"] ++ page_opts),
-           Companies.count_companies([status: "trashed"] |> maybe_put(:search, search_opt))}
-
-        role when role in @role_filters ->
-          {PartyRoles.list_companies_with_role(role, page_opts),
-           PartyRoles.count_companies_with_role(role, [] |> maybe_put(:search, search_opt))}
-
-        _ ->
-          {Companies.list_companies(page_opts),
-           Companies.count_companies([] |> maybe_put(:search, search_opt))}
+        "trashed" -> Companies.list_companies([status: "trashed"] ++ page_opts)
+        role when role in @role_filters -> PartyRoles.list_companies_with_role(role, page_opts)
+        _ -> Companies.list_companies(page_opts)
       end
 
     socket
+    |> assign(:page, page)
     |> assign(:companies, companies)
     |> assign(:total_count, total_count)
-    |> assign(:total_pages, max(ceil(total_count / @page_size), 1))
+    |> assign(:total_pages, total_pages)
     |> assign(
       :roles_map,
       PartyRoles.active_roles_map("company", Enum.map(companies, & &1.uuid))

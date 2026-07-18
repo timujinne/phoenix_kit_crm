@@ -66,15 +66,33 @@ defmodule PhoenixKitCRM.Web.CompaniesLiveTest do
       end
     end
 
-    test "a page past the last one shows 'no results on this page', not 'no companies at all'",
+    test "a page past the last one clamps down to the real last page instead of showing empty",
          %{conn: conn} do
       {:ok, _} = Companies.create_company(%{"name" => "Solo Company"})
 
       {:ok, _view, html} = live(conn, "/en/admin/crm/companies?page=999")
 
-      refute html =~ "Solo Company"
-      assert html =~ "No companies on this page."
+      assert html =~ "Solo Company"
       refute html =~ "No companies yet."
+      refute html =~ "No companies on this page."
+    end
+
+    # With more than one real page, the clamp must land on the ACTUAL last
+    # page (2, holding "Company 26"), not just fall back to page 1 — this is
+    # also the exact shape of the reported OOM crash
+    # (GET /admin/crm/contacts?page=9999999999): a huge, out-of-range page
+    # number against a small total_pages must resolve to real data, not an
+    # empty page or a runaway range.
+    test "a huge page number clamps to the real last page, not page 1", %{conn: conn} do
+      for n <- 1..26 do
+        {:ok, _} =
+          Companies.create_company(%{"name" => "Company #{String.pad_leading("#{n}", 2, "0")}"})
+      end
+
+      {:ok, _view, html} = live(conn, "/en/admin/crm/companies?page=9999999999")
+
+      refute html =~ "Company 01"
+      assert html =~ "Company 26"
     end
   end
 

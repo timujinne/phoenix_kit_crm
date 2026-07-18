@@ -152,6 +152,22 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   # ── Private helpers ─────────────────────────────────────────────────
 
   defp load_members(socket) do
+    socket = fetch_members(socket)
+
+    # No real total-pages here (this page's pagination is the "peek at
+    # limit+1" has_more? scheme, not a COUNT query) — but an out-of-range
+    # page (a stale bookmark, a bulk remove that shrank the last page, or a
+    # forged ?page=) still shouldn't show the user an unexplained empty
+    # table. If the requested page came back empty and it wasn't actually
+    # page 1, that's the tell — fall back to page 1 instead.
+    if socket.assigns.members == [] and socket.assigns.page > 1 do
+      socket |> assign(:page, 1) |> fetch_members()
+    else
+      socket
+    end
+  end
+
+  defp fetch_members(socket) do
     %{list: list, filter: filter, page: page, search: search} = socket.assigns
 
     opts =
