@@ -9,6 +9,7 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
   alias PhoenixKitCRM.Schemas.Contact
 
   @role_filters ~w(supplier client)
+  @page_size 25
 
   @impl true
   def mount(_params, _session, socket) do
@@ -16,8 +17,12 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
      assign(socket,
        page_title: gettext("CRM — Contacts"),
        filter: "active",
+       page: 1,
+       search: "",
        contacts: [],
        roles_map: %{},
+       total_count: 0,
+       total_pages: 1,
        trashed_count: 0
      )}
   end
@@ -30,24 +35,24 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
         _ -> "active"
       end
 
-    {:noreply, socket |> assign(:filter, filter) |> load()}
+    page = max(String.to_integer(params["page"] || "1"), 1)
+    search = params["search"] || ""
+
+    {:noreply,
+     socket
+     |> assign(:filter, filter)
+     |> assign(:page, page)
+     |> assign(:search, search)
+     |> load()}
   end
 
-  defp load(socket) do
-    contacts =
-      case socket.assigns.filter do
-        "trashed" -> Contacts.list_contacts(status: "trashed")
-        role when role in @role_filters -> PartyRoles.list_contacts_with_role(role)
-        _ -> Contacts.list_contacts([])
-      end
-
-    socket
-    |> assign(:contacts, contacts)
-    |> assign(:roles_map, PartyRoles.active_roles_map("contact", Enum.map(contacts, & &1.uuid)))
-    |> assign(:trashed_count, Contacts.count_contacts(status: "trashed"))
-  end
+  # ── Search / pagination ──────────────────────────────────────────────
 
   @impl true
+  def handle_event("search", %{"search" => term}, socket) do
+    {:noreply, push_patch(socket, to: contacts_path(socket.assigns, search: term, page: 1))}
+  end
+
   def handle_event("trash", %{"uuid" => uuid}, socket) do
     with %Contact{} = c <- Contacts.get_contact(uuid), {:ok, _} <- Contacts.trash_contact(c) do
       Activity.log(
@@ -89,33 +94,64 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <div role="tablist" class="tabs tabs-bordered">
-        <.link patch={Paths.contacts()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
-          {gettext("Active")}
-        </.link>
-        <.link patch={Paths.contacts() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
-          {gettext("Suppliers")}
-        </.link>
-        <.link patch={Paths.contacts() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
-          {gettext("Clients")}
-        </.link>
-        <.link
-          :if={@trashed_count > 0 or @filter == "trashed"}
-          patch={Paths.contacts() <> "?filter=trashed"}
-          role="tab"
-          class={["tab", @filter == "trashed" && "tab-active"]}
-        >
-          {trashed_tab_label(@trashed_count)}
-        </.link>
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div role="tablist" class="tabs tabs-bordered">
+          <.link
+            patch={contacts_path(assigns, filter: "active", page: 1)}
+            role="tab"
+            class={["tab", @filter == "active" && "tab-active"]}
+          >
+            {gettext("Active")}
+          </.link>
+          <.link
+            patch={contacts_path(assigns, filter: "supplier", page: 1)}
+            role="tab"
+            class={["tab", @filter == "supplier" && "tab-active"]}
+          >
+            {gettext("Suppliers")}
+          </.link>
+          <.link
+            patch={contacts_path(assigns, filter: "client", page: 1)}
+            role="tab"
+            class={["tab", @filter == "client" && "tab-active"]}
+          >
+            {gettext("Clients")}
+          </.link>
+          <.link
+            :if={@trashed_count > 0 or @filter == "trashed"}
+            patch={contacts_path(assigns, filter: "trashed", page: 1)}
+            role="tab"
+            class={["tab", @filter == "trashed" && "tab-active"]}
+          >
+            {trashed_tab_label(@trashed_count)}
+          </.link>
+        </div>
+
+        <div class="w-full sm:w-64">
+          <.search_toolbar
+            name="search"
+            value={@search}
+            placeholder={gettext("Search name/email")}
+            on_submit="search"
+          />
+        </div>
       </div>
 
       <.empty_state
         :if={@contacts == []}
         icon="hero-user"
-        title={gettext("No contacts yet.")}
+        title={
+          if @search != "",
+            do: gettext("No contacts match your search."),
+            else: gettext("No contacts yet.")
+        }
         variant="card"
       >
-        <.link navigate={Paths.contact_new()} class="btn btn-primary">
+        <.link
+          :if={@search == "" and @filter == "active"}
+          navigate={Paths.contact_new()}
+          class="btn btn-primary"
+        >
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Create first contact")}
         </.link>
       </.empty_state>
@@ -131,9 +167,7 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
       >
         <:toolbar_title>
           <span class="text-sm text-base-content/60">
-            {ngettext("%{count} contact", "%{count} contacts", length(@contacts),
-              count: length(@contacts)
-            )}
+            {ngettext("%{count} contact", "%{count} contacts", @total_count, count: @total_count)}
           </span>
         </:toolbar_title>
         <:toolbar_actions>
@@ -185,8 +219,71 @@ defmodule PhoenixKitCRM.Web.ContactsLive do
           </.table_default_row>
         </.table_default_body>
       </.table_default>
+
+      <.pagination
+        current_page={@page}
+        total_pages={@total_pages}
+        base_path={Paths.contacts()}
+        params={%{
+          "filter" => (@filter != "active" && @filter) || nil,
+          "search" => (@search != "" && @search) || nil
+        }}
+      />
     </div>
     """
+  end
+
+  # ── Private helpers ─────────────────────────────────────────────────
+
+  defp load(socket) do
+    %{filter: filter, page: page, search: search} = socket.assigns
+    search_opt = if search == "", do: nil, else: search
+
+    page_opts =
+      [limit: @page_size, offset: (page - 1) * @page_size] |> maybe_put(:search, search_opt)
+
+    {contacts, total_count} =
+      case filter do
+        "trashed" ->
+          {Contacts.list_contacts([status: "trashed"] ++ page_opts),
+           Contacts.count_contacts([status: "trashed"] |> maybe_put(:search, search_opt))}
+
+        role when role in @role_filters ->
+          {PartyRoles.list_contacts_with_role(role, page_opts),
+           PartyRoles.count_contacts_with_role(role, [] |> maybe_put(:search, search_opt))}
+
+        _ ->
+          {Contacts.list_contacts(page_opts),
+           Contacts.count_contacts([] |> maybe_put(:search, search_opt))}
+      end
+
+    socket
+    |> assign(:contacts, contacts)
+    |> assign(:total_count, total_count)
+    |> assign(:total_pages, max(ceil(total_count / @page_size), 1))
+    |> assign(:roles_map, PartyRoles.active_roles_map("contact", Enum.map(contacts, & &1.uuid)))
+    |> assign(:trashed_count, Contacts.count_contacts(status: "trashed"))
+  end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # Takes an assigns-shaped map — either a LiveView `socket.assigns` (from an
+  # event handler) or the `assigns` passed into `render/1` (from the
+  # template) — both expose `:filter`/`:search`/`:page` the same way.
+  # "active" is the default filter (never shown in the query string, matching
+  # the plain `Paths.contacts()` href the Active tab has always used).
+  defp contacts_path(assigns, overrides) do
+    params =
+      %{filter: assigns.filter, search: assigns.search, page: assigns.page}
+      |> Map.merge(Map.new(overrides))
+      |> Enum.reject(fn {k, v} -> v in [nil, "", 1] or (k == :filter and v == "active") end)
+      |> Enum.into(%{})
+
+    case params do
+      empty when map_size(empty) == 0 -> Paths.contacts()
+      _ -> Paths.contacts() <> "?" <> URI.encode_query(params)
+    end
   end
 
   # The contact's primary company (linked) + role, or "—".

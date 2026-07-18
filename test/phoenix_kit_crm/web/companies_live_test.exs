@@ -32,4 +32,52 @@ defmodule PhoenixKitCRM.Web.CompaniesLiveTest do
 
     assert has_element?(view, ~s{a[href="/en/admin/crm/companies/new"]}, "New company")
   end
+
+  describe "pagination" do
+    test "more than a page of companies splits across pages, page 2 reachable via ?page=2",
+         %{conn: conn} do
+      for n <- 1..26 do
+        {:ok, _} =
+          Companies.create_company(%{"name" => "Company #{String.pad_leading("#{n}", 2, "0")}"})
+      end
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/companies")
+      assert html =~ "Company 01"
+      assert html =~ "Company 25"
+      refute html =~ "Company 26"
+      assert html =~ "26 companies"
+      assert has_element?(view, "a", "2")
+
+      {:ok, _view2, html2} = live(conn, "/en/admin/crm/companies?page=2")
+      refute html2 =~ "Company 01"
+      assert html2 =~ "Company 26"
+    end
+  end
+
+  describe "search" do
+    test "narrows the table by name or email", %{conn: conn} do
+      {:ok, _} =
+        Companies.create_company(%{"name" => "Alpha Wonders", "email" => "a@example.com"})
+
+      {:ok, _} =
+        Companies.create_company(%{"name" => "Beta Corp", "email" => "wonder@beta.example"})
+
+      {:ok, _} = Companies.create_company(%{"name" => "Gamma Inc"})
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/companies")
+      assert html =~ "Alpha Wonders"
+      assert html =~ "Beta Corp"
+      assert html =~ "Gamma Inc"
+
+      html =
+        view
+        |> element("form[phx-submit='search'] input[name='search']")
+        |> render_change(%{"search" => "wonder"})
+
+      assert html =~ "Alpha Wonders"
+      assert html =~ "Beta Corp"
+      refute html =~ "Gamma Inc"
+      assert html =~ "2 companies"
+    end
+  end
 end

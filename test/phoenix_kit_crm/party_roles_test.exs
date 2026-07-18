@@ -217,6 +217,43 @@ defmodule PhoenixKitCRM.PartyRolesTest do
       assert [%{uuid: uuid}] = PartyRoles.list_contacts_with_role("client")
       assert uuid == contact.uuid
     end
+
+    test "list_contacts_with_role/2 paginates and searches within the role" do
+      alice = contact_fixture(%{"name" => "Alice Wonder"})
+      bob = contact_fixture(%{"name" => "Bob Wonder"})
+      carol = contact_fixture(%{"name" => "Carol NotMatching"})
+
+      {:ok, _} = PartyRoles.grant_role(alice, "supplier")
+      {:ok, _} = PartyRoles.grant_role(bob, "supplier")
+      {:ok, _} = PartyRoles.grant_role(carol, "supplier")
+
+      assert PartyRoles.count_contacts_with_role("supplier") == 3
+
+      page1 =
+        PartyRoles.list_contacts_with_role("supplier", limit: 2, offset: 0)
+        |> Enum.map(& &1.uuid)
+
+      page2 =
+        PartyRoles.list_contacts_with_role("supplier", limit: 2, offset: 2)
+        |> Enum.map(& &1.uuid)
+
+      assert length(page1) == 2
+      assert page2 == [carol.uuid]
+
+      searched = PartyRoles.list_contacts_with_role("supplier", search: "wonder")
+      assert Enum.map(searched, & &1.uuid) |> Enum.sort() == Enum.sort([alice.uuid, bob.uuid])
+      assert PartyRoles.count_contacts_with_role("supplier", search: "wonder") == 2
+    end
+
+    test "count_companies_with_role/2 honors the same filters as list_companies_with_role/2" do
+      zeta = company_fixture(%{"name" => "Zeta"})
+      acme = company_fixture(%{"name" => "Acme"})
+      {:ok, _} = PartyRoles.grant_role(zeta, "client")
+      {:ok, _} = PartyRoles.grant_role(acme, "client")
+
+      assert PartyRoles.count_companies_with_role("client") == 2
+      assert PartyRoles.count_companies_with_role("client", search: "zeta") == 1
+    end
   end
 
   describe "get_supplier/1 (catalogue facade contract)" do

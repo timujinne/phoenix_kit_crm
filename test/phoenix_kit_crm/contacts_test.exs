@@ -90,6 +90,33 @@ defmodule PhoenixKitCRM.ContactsTest do
       {:ok, _} = Contacts.trash_contact(contact_fixture())
       assert Contacts.count_contacts(status: "trashed") == 1
     end
+
+    test "limit/offset page through results in name order; absent means unpaginated" do
+      a = contact_fixture(%{"name" => "Alice"})
+      b = contact_fixture(%{"name" => "Bob"})
+      c = contact_fixture(%{"name" => "Carol"})
+
+      assert Contacts.list_contacts() |> Enum.map(& &1.uuid) == [a.uuid, b.uuid, c.uuid]
+
+      page1 = Contacts.list_contacts(limit: 2, offset: 0) |> Enum.map(& &1.uuid)
+      page2 = Contacts.list_contacts(limit: 2, offset: 2) |> Enum.map(& &1.uuid)
+      assert page1 == [a.uuid, b.uuid]
+      assert page2 == [c.uuid]
+    end
+
+    test "search matches by name or email, case-insensitively; combines with limit/offset" do
+      alice = contact_fixture(%{"name" => "Alice Wonder", "email" => "alice@example.com"})
+      bob = contact_fixture(%{"name" => "Bob Builder", "email" => "wonder@bob.example"})
+      contact_fixture(%{"name" => "Carol Danvers", "email" => "carol@example.com"})
+
+      by_name = Contacts.list_contacts(search: "wonder") |> Enum.map(& &1.uuid) |> Enum.sort()
+      assert by_name == Enum.sort([alice.uuid, bob.uuid])
+
+      assert Contacts.count_contacts(search: "wonder") == 2
+
+      paged = Contacts.list_contacts(search: "wonder", limit: 1, offset: 0)
+      assert length(paged) == 1
+    end
   end
 
   describe "list_by_uuids/1" do

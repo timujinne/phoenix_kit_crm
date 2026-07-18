@@ -59,4 +59,88 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
       actor_uuid: scope.user.uuid
     )
   end
+
+  describe "pagination" do
+    test "more than a page of contacts splits across pages, newest page reachable via ?page=2",
+         %{conn: conn} do
+      # 26 contacts, one over the page size — "Contact 01".."Contact 26" sort
+      # in that order by name, so page 1 (25) holds 01..25 and page 2 holds
+      # just 26.
+      for n <- 1..26 do
+        {:ok, _} =
+          Contacts.create_contact(%{"name" => "Contact #{String.pad_leading("#{n}", 2, "0")}"})
+      end
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/contacts")
+      assert html =~ "Contact 01"
+      assert html =~ "Contact 25"
+      refute html =~ "Contact 26"
+      # real total-count pagination (not the has_more?/peek trick) — the
+      # toolbar count must reflect all 26, not just this page's 25.
+      assert html =~ "26 contacts"
+      assert has_element?(view, "a", "2")
+
+      {:ok, _view2, html2} = live(conn, "/en/admin/crm/contacts?page=2")
+      refute html2 =~ "Contact 01"
+      assert html2 =~ "Contact 26"
+    end
+
+    test "no pagination controls render when everything fits on one page", %{conn: conn} do
+      {:ok, _} = Contacts.create_contact(%{"name" => "Solo Contact"})
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/contacts")
+
+      refute has_element?(view, "a", "2")
+    end
+  end
+
+  describe "search" do
+    test "narrows the table by name or email and combines with pagination", %{conn: conn} do
+      {:ok, _} =
+        Contacts.create_contact(%{"name" => "Alice Wonder", "email" => "a@example.com"})
+
+      {:ok, _} =
+        Contacts.create_contact(%{"name" => "Bob Builder", "email" => "wonder@bob.example"})
+
+      {:ok, _} = Contacts.create_contact(%{"name" => "Carol Danvers"})
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/contacts")
+      assert html =~ "Alice Wonder"
+      assert html =~ "Bob Builder"
+      assert html =~ "Carol Danvers"
+
+      html =
+        view
+        |> element("form[phx-submit='search'] input[name='search']")
+        |> render_change(%{"search" => "wonder"})
+
+      assert html =~ "Alice Wonder"
+      assert html =~ "Bob Builder"
+      refute html =~ "Carol Danvers"
+      assert html =~ "2 contacts"
+    end
+
+    test "combines with a role tab (search only within the current filter)", %{conn: conn} do
+      _alice = contact_with_role("Alice Wonder", "supplier")
+      _bob = contact_with_role("Bob Wonder", "client")
+
+      {:ok, view, html} = live(conn, "/en/admin/crm/contacts?filter=supplier")
+      assert html =~ "Alice Wonder"
+      refute html =~ "Bob Wonder"
+
+      html =
+        view
+        |> element("form[phx-submit='search'] input[name='search']")
+        |> render_change(%{"search" => "wonder"})
+
+      assert html =~ "Alice Wonder"
+      refute html =~ "Bob Wonder"
+    end
+  end
+
+  defp contact_with_role(name, role) do
+    {:ok, contact} = Contacts.create_contact(%{"name" => name})
+    {:ok, _} = PhoenixKitCRM.PartyRoles.grant_role(contact, role)
+    contact
+  end
 end

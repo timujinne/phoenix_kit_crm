@@ -29,12 +29,20 @@ defmodule PhoenixKitCRM.Contacts do
   @doc """
   Lists contacts. Excludes trashed by default; preloads the primary company
   membership (with company) and the linked user.
+
+  ## Options
+    * `:status` / `:include_trashed` — see `apply_status_scope/2`
+    * `:search` — name/email ILIKE match (case-insensitive)
+    * `:limit` / `:offset` — pagination; both no-ops when absent, so this
+      stays a full unpaginated list for any existing caller not passing them
   """
   @spec list_contacts(keyword()) :: [Contact.t()]
   def list_contacts(opts \\ []) do
     Contact
     |> apply_status_scope(opts)
+    |> maybe_search_contacts(opts)
     |> order_by([c], asc: c.name)
+    |> maybe_paginate(opts)
     |> repo().all()
     |> repo().preload(company_memberships: :company, user: [])
   end
@@ -51,10 +59,12 @@ defmodule PhoenixKitCRM.Contacts do
     end
   end
 
+  @doc "Same filters as `list_contacts/1` (`:status`/`:include_trashed`/`:search`); ignores `:limit`/`:offset`."
   @spec count_contacts(keyword()) :: non_neg_integer()
   def count_contacts(opts \\ []) do
     Contact
     |> apply_status_scope(opts)
+    |> maybe_search_contacts(opts)
     |> repo().aggregate(:count, :uuid)
   end
 
@@ -327,6 +337,29 @@ defmodule PhoenixKitCRM.Contacts do
       true -> where(query, [c], c.status != "trashed")
     end
   end
+
+  defp maybe_search_contacts(query, opts) do
+    case Keyword.get(opts, :search) do
+      term when is_binary(term) and term != "" ->
+        like = like_pattern(term)
+        where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
+
+      _ ->
+        query
+    end
+  end
+
+  defp maybe_paginate(query, opts) do
+    query
+    |> maybe_limit(Keyword.get(opts, :limit))
+    |> maybe_offset(Keyword.get(opts, :offset))
+  end
+
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, limit), do: limit(query, ^limit)
+
+  defp maybe_offset(query, nil), do: query
+  defp maybe_offset(query, offset), do: offset(query, ^offset)
 
   defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 end

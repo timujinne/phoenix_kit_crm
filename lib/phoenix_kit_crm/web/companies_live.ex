@@ -9,6 +9,7 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   alias PhoenixKitCRM.Schemas.Company
 
   @role_filters ~w(supplier client)
+  @page_size 25
 
   @impl true
   def mount(_params, _session, socket) do
@@ -16,8 +17,12 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
      assign(socket,
        page_title: gettext("CRM — Companies"),
        filter: "active",
+       page: 1,
+       search: "",
        companies: [],
        roles_map: %{},
+       total_count: 0,
+       total_pages: 1,
        trashed_count: 0
      )}
   end
@@ -30,24 +35,24 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
         _ -> "active"
       end
 
-    {:noreply, socket |> assign(:filter, filter) |> load()}
+    page = max(String.to_integer(params["page"] || "1"), 1)
+    search = params["search"] || ""
+
+    {:noreply,
+     socket
+     |> assign(:filter, filter)
+     |> assign(:page, page)
+     |> assign(:search, search)
+     |> load()}
   end
 
-  defp load(socket) do
-    companies =
-      case socket.assigns.filter do
-        "trashed" -> Companies.list_companies(status: "trashed")
-        role when role in @role_filters -> PartyRoles.list_companies_with_role(role)
-        _ -> Companies.list_companies([])
-      end
-
-    socket
-    |> assign(:companies, companies)
-    |> assign(:roles_map, PartyRoles.active_roles_map("company", Enum.map(companies, & &1.uuid)))
-    |> assign(:trashed_count, Companies.count_companies(status: "trashed"))
-  end
+  # ── Search / pagination ──────────────────────────────────────────────
 
   @impl true
+  def handle_event("search", %{"search" => term}, socket) do
+    {:noreply, push_patch(socket, to: companies_path(socket.assigns, search: term, page: 1))}
+  end
+
   def handle_event("trash", %{"uuid" => uuid}, socket) do
     with %Company{} = c <- Companies.get_company(uuid),
          {:ok, _} <- Companies.trash_company(c) do
@@ -92,33 +97,64 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <div role="tablist" class="tabs tabs-bordered">
-        <.link patch={Paths.companies()} role="tab" class={["tab", @filter == "active" && "tab-active"]}>
-          {gettext("Active")}
-        </.link>
-        <.link patch={Paths.companies() <> "?filter=supplier"} role="tab" class={["tab", @filter == "supplier" && "tab-active"]}>
-          {gettext("Suppliers")}
-        </.link>
-        <.link patch={Paths.companies() <> "?filter=client"} role="tab" class={["tab", @filter == "client" && "tab-active"]}>
-          {gettext("Clients")}
-        </.link>
-        <.link
-          :if={@trashed_count > 0 or @filter == "trashed"}
-          patch={Paths.companies() <> "?filter=trashed"}
-          role="tab"
-          class={["tab", @filter == "trashed" && "tab-active"]}
-        >
-          {trashed_tab_label(@trashed_count)}
-        </.link>
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div role="tablist" class="tabs tabs-bordered">
+          <.link
+            patch={companies_path(assigns, filter: "active", page: 1)}
+            role="tab"
+            class={["tab", @filter == "active" && "tab-active"]}
+          >
+            {gettext("Active")}
+          </.link>
+          <.link
+            patch={companies_path(assigns, filter: "supplier", page: 1)}
+            role="tab"
+            class={["tab", @filter == "supplier" && "tab-active"]}
+          >
+            {gettext("Suppliers")}
+          </.link>
+          <.link
+            patch={companies_path(assigns, filter: "client", page: 1)}
+            role="tab"
+            class={["tab", @filter == "client" && "tab-active"]}
+          >
+            {gettext("Clients")}
+          </.link>
+          <.link
+            :if={@trashed_count > 0 or @filter == "trashed"}
+            patch={companies_path(assigns, filter: "trashed", page: 1)}
+            role="tab"
+            class={["tab", @filter == "trashed" && "tab-active"]}
+          >
+            {trashed_tab_label(@trashed_count)}
+          </.link>
+        </div>
+
+        <div class="w-full sm:w-64">
+          <.search_toolbar
+            name="search"
+            value={@search}
+            placeholder={gettext("Search name/email")}
+            on_submit="search"
+          />
+        </div>
       </div>
 
       <.empty_state
         :if={@companies == []}
         icon="hero-building-office-2"
-        title={gettext("No companies yet.")}
+        title={
+          if @search != "",
+            do: gettext("No companies match your search."),
+            else: gettext("No companies yet.")
+        }
         variant="card"
       >
-        <.link navigate={Paths.company_new()} class="btn btn-primary">
+        <.link
+          :if={@search == "" and @filter == "active"}
+          navigate={Paths.company_new()}
+          class="btn btn-primary"
+        >
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Create first company")}
         </.link>
       </.empty_state>
@@ -134,9 +170,7 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
       >
         <:toolbar_title>
           <span class="text-sm text-base-content/60">
-            {ngettext("%{count} company", "%{count} companies", length(@companies),
-              count: length(@companies)
-            )}
+            {ngettext("%{count} company", "%{count} companies", @total_count, count: @total_count)}
           </span>
         </:toolbar_title>
         <:toolbar_actions>
@@ -177,8 +211,74 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
           </.table_default_row>
         </.table_default_body>
       </.table_default>
+
+      <.pagination
+        current_page={@page}
+        total_pages={@total_pages}
+        base_path={Paths.companies()}
+        params={%{
+          "filter" => (@filter != "active" && @filter) || nil,
+          "search" => (@search != "" && @search) || nil
+        }}
+      />
     </div>
     """
+  end
+
+  # ── Private helpers ─────────────────────────────────────────────────
+
+  defp load(socket) do
+    %{filter: filter, page: page, search: search} = socket.assigns
+    search_opt = if search == "", do: nil, else: search
+
+    page_opts =
+      [limit: @page_size, offset: (page - 1) * @page_size] |> maybe_put(:search, search_opt)
+
+    {companies, total_count} =
+      case filter do
+        "trashed" ->
+          {Companies.list_companies([status: "trashed"] ++ page_opts),
+           Companies.count_companies([status: "trashed"] |> maybe_put(:search, search_opt))}
+
+        role when role in @role_filters ->
+          {PartyRoles.list_companies_with_role(role, page_opts),
+           PartyRoles.count_companies_with_role(role, [] |> maybe_put(:search, search_opt))}
+
+        _ ->
+          {Companies.list_companies(page_opts),
+           Companies.count_companies([] |> maybe_put(:search, search_opt))}
+      end
+
+    socket
+    |> assign(:companies, companies)
+    |> assign(:total_count, total_count)
+    |> assign(:total_pages, max(ceil(total_count / @page_size), 1))
+    |> assign(
+      :roles_map,
+      PartyRoles.active_roles_map("company", Enum.map(companies, & &1.uuid))
+    )
+    |> assign(:trashed_count, Companies.count_companies(status: "trashed"))
+  end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
+
+  # Takes an assigns-shaped map — either a LiveView `socket.assigns` (from an
+  # event handler) or the `assigns` passed into `render/1` (from the
+  # template) — both expose `:filter`/`:search`/`:page` the same way.
+  # "active" is the default filter (never shown in the query string, matching
+  # the plain `Paths.companies()` href the Active tab has always used).
+  defp companies_path(assigns, overrides) do
+    params =
+      %{filter: assigns.filter, search: assigns.search, page: assigns.page}
+      |> Map.merge(Map.new(overrides))
+      |> Enum.reject(fn {k, v} -> v in [nil, "", 1] or (k == :filter and v == "active") end)
+      |> Enum.into(%{})
+
+    case params do
+      empty when map_size(empty) == 0 -> Paths.companies()
+      _ -> Paths.companies() <> "?" <> URI.encode_query(params)
+    end
   end
 
   defp trashed_tab_label(0), do: gettext("Trashed")
