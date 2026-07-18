@@ -43,7 +43,10 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
          |> assign(:members, [])
          |> assign(:has_more?, false)
          |> assign(:add_form, blank_add_form())
-         |> assign(:email_check, nil)}
+         |> assign(:email_check, nil)
+         |> assign(:show_locale_modal, false)
+         |> assign(:locale_mode, "missing_only")
+         |> assign(:locale_preview, %{total: 0, different_locale: 0})}
     end
   end
 
@@ -138,6 +141,52 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
     end
   end
 
+  # ── Bulk-apply list locale to members ─────────────────────────────────
+
+  def handle_event("open_locale_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_locale_modal, true)
+     |> assign(:locale_mode, "missing_only")
+     |> assign(:locale_preview, Lists.locale_apply_preview(socket.assigns.list))}
+  end
+
+  def handle_event("close_locale_modal", _params, socket) do
+    {:noreply, assign(socket, :show_locale_modal, false)}
+  end
+
+  def handle_event("set_locale_mode", %{"mode" => mode}, socket)
+      when mode in ~w(missing_only all) do
+    {:noreply, assign(socket, :locale_mode, mode)}
+  end
+
+  def handle_event("apply_locale", _params, socket) do
+    mode = String.to_existing_atom(socket.assigns.locale_mode)
+
+    case Lists.apply_locale_to_members(socket.assigns.list, mode, Activity.actor_opts(socket)) do
+      {:ok, count} ->
+        {:noreply,
+         socket
+         |> assign(:show_locale_modal, false)
+         |> put_flash(
+           :info,
+           ngettext(
+             "Locale applied to %{count} contact",
+             "Locale applied to %{count} contacts",
+             count,
+             count: count
+           )
+         )
+         |> load_members()}
+
+      {:error, :no_locale} ->
+        {:noreply,
+         socket
+         |> assign(:show_locale_modal, false)
+         |> put_flash(:error, gettext("This list has no locale set"))}
+    end
+  end
+
   @impl true
   def handle_info({:crm, _event, %{list_uuid: list_uuid}}, socket) do
     if list_uuid == socket.assigns.list.uuid do
@@ -214,6 +263,10 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
   defp presence(""), do: nil
   defp presence(v), do: v
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
 
   # Takes an assigns-shaped map — either a LiveView `socket.assigns` (from an
   # event handler) or the `assigns` passed into `render/1` (from the
@@ -376,6 +429,17 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
           </div>
 
           <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              disabled={blank?(@list.locale)}
+              title={
+                if blank?(@list.locale), do: gettext("Set a locale on this list first"), else: nil
+              }
+              phx-click="open_locale_modal"
+            >
+              <.icon name="hero-language" class="w-4 h-4" /> {gettext("Apply list locale to contacts")}
+            </button>
             <.link navigate={Paths.list_import(@list.uuid)} class="btn btn-outline btn-sm">
               <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> {gettext("Import")}
             </.link>
@@ -394,6 +458,76 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
           />
         </div>
       </div>
+
+      <.modal
+        show={@show_locale_modal}
+        on_close="close_locale_modal"
+        id="crm-list-locale-modal"
+        max_width="md"
+      >
+        <:title>{gettext("Apply list locale to contacts")}</:title>
+        <div class="flex flex-col gap-4">
+          <p class="text-sm text-base-content/70">
+            {gettext("This list's locale is %{locale}.", locale: @list.locale)}
+          </p>
+          <p class="text-sm">
+            {ngettext(
+              "%{count} subscribed contact will be affected.",
+              "%{count} subscribed contacts will be affected.",
+              @locale_preview.total,
+              count: @locale_preview.total
+            )}
+          </p>
+          <p :if={@locale_preview.different_locale > 0} class="text-sm text-warning">
+            {ngettext(
+              "%{count} of them already has a different locale set.",
+              "%{count} of them already have a different locale set.",
+              @locale_preview.different_locale,
+              count: @locale_preview.different_locale
+            )}
+          </p>
+
+          <fieldset class="flex flex-col gap-2">
+            <label class="label cursor-pointer justify-start gap-2">
+              <input
+                type="radio"
+                name="locale_mode"
+                class="radio radio-sm"
+                checked={@locale_mode == "missing_only"}
+                phx-click="set_locale_mode"
+                phx-value-mode="missing_only"
+              />
+              <span class="label-text">{gettext("Only contacts without a locale")}</span>
+            </label>
+            <label class="label cursor-pointer justify-start gap-2">
+              <input
+                type="radio"
+                name="locale_mode"
+                class="radio radio-sm"
+                checked={@locale_mode == "all"}
+                phx-click="set_locale_mode"
+                phx-value-mode="all"
+              />
+              <span class="label-text">{gettext("All (overwrite existing locale)")}</span>
+            </label>
+          </fieldset>
+        </div>
+
+        <:actions>
+          <button type="button" class="btn btn-ghost" phx-click="close_locale_modal">
+            {gettext("Cancel")}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            phx-click="apply_locale"
+            phx-disable-with={gettext("Applying…")}
+            disabled={@locale_preview.total == 0}
+          >
+            {gettext("Apply")}
+          </button>
+        </:actions>
+      </.modal>
 
       <.empty_state
         :if={@members == []}

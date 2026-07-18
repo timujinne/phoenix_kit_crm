@@ -46,6 +46,22 @@ defmodule PhoenixKitCRM.Web.ListFormLiveTest do
     assert Lists.get_list!(list.uuid).name == "Renamed"
   end
 
+  test "the locale field is a select, not a free-text input", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists/new")
+
+    assert has_element?(view, "select[name='list[locale]']")
+    assert html =~ "Not set"
+  end
+
+  test "setting a locale persists it", %{conn: conn} do
+    {:ok, list} = Lists.create_list(%{"name" => "Original", "slug" => "original"})
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/edit")
+    view |> form("#crm-list-form", list: %{locale: "de-DE"}) |> render_submit()
+
+    assert Lists.get_list!(list.uuid).locale == "de-DE"
+  end
+
   # Regression test: the Subscribable checkbox previously had no hidden
   # "false" fallback input, so an unchecked box was omitted entirely from a
   # real browser's form submission — Ecto.Changeset.cast/3 never saw the key

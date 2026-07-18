@@ -18,6 +18,11 @@ defmodule PhoenixKitCRM.Schemas.ContactList do
   @foreign_key_type UUIDv7
 
   @statuses ~w(active archived)
+  # Same format core's `User.validate_locale_value/1` checks, and the same
+  # local copy `PhoenixKitCRM.Schemas.Contact` keeps for its own `locale` —
+  # kept local here too so this schema doesn't reach into core internals or
+  # a sibling schema for a one-line format check.
+  @locale_format ~r/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 
   @type t :: %__MODULE__{
           uuid: UUIDv7.t() | nil,
@@ -27,6 +32,7 @@ defmodule PhoenixKitCRM.Schemas.ContactList do
           status: String.t() | nil,
           subscribable: boolean(),
           subscriber_count: integer(),
+          locale: String.t() | nil,
           metadata: map(),
           members: [ListMember.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -40,6 +46,7 @@ defmodule PhoenixKitCRM.Schemas.ContactList do
     field(:status, :string, default: "active")
     field(:subscribable, :boolean, default: false)
     field(:subscriber_count, :integer, default: 0)
+    field(:locale, :string)
     field(:metadata, :map, default: %{})
 
     has_many(:members, ListMember, foreign_key: :list_uuid, references: :uuid)
@@ -47,7 +54,7 @@ defmodule PhoenixKitCRM.Schemas.ContactList do
     timestamps(type: :utc_datetime)
   end
 
-  @castable ~w(name slug description status subscribable)a
+  @castable ~w(name slug description status subscribable locale)a
 
   @doc "Public changeset for create/edit. `subscriber_count` is NOT castable here."
   @spec changeset(t() | Ecto.Changeset.t(t()), map()) :: Ecto.Changeset.t(t())
@@ -64,7 +71,20 @@ defmodule PhoenixKitCRM.Schemas.ContactList do
     |> validate_format(:slug, ~r/^[a-z0-9][a-z0-9-]*$/,
       message: "must contain only lowercase letters, numbers, and hyphens"
     )
+    |> maybe_validate_locale()
     |> unique_constraint(:slug, name: :idx_crm_lists_slug)
+  end
+
+  defp maybe_validate_locale(changeset) do
+    case get_field(changeset, :locale) do
+      l when is_binary(l) and l != "" ->
+        validate_format(changeset, :locale, @locale_format,
+          message: "must be a valid locale format (e.g., en, en-US)"
+        )
+
+      _ ->
+        changeset
+    end
   end
 
   defp auto_generate_slug(changeset) do

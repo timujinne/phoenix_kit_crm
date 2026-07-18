@@ -66,6 +66,21 @@ defmodule PhoenixKitCRM.ListsTest do
         actor_uuid: actor_uuid
       )
     end
+
+    test "accepts a blank locale (not set), and a well-formed one" do
+      assert {:ok, list} = Lists.create_list(%{"name" => "No Locale"})
+      assert list.locale == nil
+
+      assert {:ok, list} = Lists.create_list(%{"name" => "With Locale", "locale" => "en-US"})
+      assert list.locale == "en-US"
+    end
+
+    test "rejects a malformed locale" do
+      assert {:error, changeset} =
+               Lists.create_list(%{"name" => "Bad Locale", "locale" => "not a locale"})
+
+      assert changeset.errors[:locale]
+    end
   end
 
   describe "update_list/3" do
@@ -455,6 +470,120 @@ defmodule PhoenixKitCRM.ListsTest do
       assert {:ok, removed} = Lists.remove_from_list(pending)
       assert removed.status == "removed"
       assert Lists.get_list!(list.uuid).subscriber_count == 0
+    end
+  end
+
+  describe "locale_apply_preview/1" do
+    test "zero/zero when the list has no locale set" do
+      list = list_fixture()
+      contact = contact_fixture()
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      assert Lists.locale_apply_preview(list) == %{total: 0, different_locale: 0}
+    end
+
+    test "counts subscribed members, and separately how many already have a different locale" do
+      list = list_fixture(%{"locale" => "en"})
+
+      no_locale = contact_fixture(%{"locale" => nil})
+      same_locale = contact_fixture(%{"locale" => "en"})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(same_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      # A removed member doesn't count — only "subscribed" is targeted.
+      removed_contact = contact_fixture(%{"locale" => "de"})
+      {:ok, removed_member} = Lists.add_contact_to_list(removed_contact, list)
+      {:ok, _} = Lists.remove_from_list(removed_member)
+
+      assert Lists.locale_apply_preview(list) == %{total: 3, different_locale: 1}
+    end
+  end
+
+  describe "apply_locale_to_members/3" do
+    test "returns an error when the list has no locale set" do
+      list = list_fixture()
+      assert Lists.apply_locale_to_members(list, :all) == {:error, :no_locale}
+    end
+
+    test ":missing_only writes the list's locale onto contacts with no locale, leaves others alone" do
+      list = list_fixture(%{"locale" => "en"})
+
+      no_locale = contact_fixture(%{"locale" => nil})
+      blank_locale = contact_fixture(%{"locale" => ""})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(blank_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      assert {:ok, 2} = Lists.apply_locale_to_members(list, :missing_only)
+
+      assert Contacts.get_contact(no_locale.uuid).locale == "en"
+      assert Contacts.get_contact(blank_locale.uuid).locale == "en"
+      assert Contacts.get_contact(different_locale.uuid).locale == "de"
+    end
+
+    test ":all overwrites every subscribed member's locale, including a different one" do
+      list = list_fixture(%{"locale" => "en"})
+
+      no_locale = contact_fixture(%{"locale" => nil})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      assert {:ok, 2} = Lists.apply_locale_to_members(list, :all)
+
+      assert Contacts.get_contact(no_locale.uuid).locale == "en"
+      assert Contacts.get_contact(different_locale.uuid).locale == "en"
+    end
+
+    test "only touches subscribed members, not removed ones" do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => nil})
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+      {:ok, _} = Lists.remove_from_list(member)
+
+      assert {:ok, 0} = Lists.apply_locale_to_members(list, :all)
+      assert Contacts.get_contact(contact.uuid).locale == nil
+    end
+
+    test "a contact in multiple lists ends up with whichever list applied its locale last" do
+      list_a = list_fixture(%{"locale" => "en"})
+      list_b = list_fixture(%{"locale" => "de"})
+      contact = contact_fixture(%{"locale" => nil})
+      {:ok, _} = Lists.add_contact_to_list(contact, list_a)
+      {:ok, _} = Lists.add_contact_to_list(contact, list_b)
+
+      assert {:ok, 1} = Lists.apply_locale_to_members(list_a, :all)
+      assert Contacts.get_contact(contact.uuid).locale == "en"
+
+      assert {:ok, 1} = Lists.apply_locale_to_members(list_b, :all)
+      assert Contacts.get_contact(contact.uuid).locale == "de"
+    end
+
+    test "logs one activity entry per call with the affected count" do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => nil})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+      actor_uuid = Ecto.UUID.generate()
+
+      assert {:ok, 1} =
+               Lists.apply_locale_to_members(list, :missing_only, actor_uuid: actor_uuid)
+
+      assert_activity_logged("crm.list_locale_applied",
+        resource_uuid: list.uuid,
+        actor_uuid: actor_uuid
+      )
+    end
+
+    test "does not log when nothing was updated" do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => "en"})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      assert {:ok, 0} = Lists.apply_locale_to_members(list, :missing_only)
+      refute_activity_logged("crm.list_locale_applied", resource_uuid: list.uuid)
     end
   end
 

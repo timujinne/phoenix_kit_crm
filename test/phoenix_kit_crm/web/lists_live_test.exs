@@ -27,6 +27,16 @@ defmodule PhoenixKitCRM.Web.ListsLiveTest do
     assert html =~ "VIP Customers"
   end
 
+  test "shows the list's locale, or a dash when it has none", %{conn: conn} do
+    list_fixture(%{"name" => "With Locale", "locale" => "fr-FR"})
+    list_fixture(%{"name" => "No Locale"})
+
+    {:ok, _view, html} = live(conn, "/en/admin/crm/lists")
+
+    assert html =~ "fr-FR"
+    assert html =~ "—"
+  end
+
   test "the page title lives in the chrome assign, not a duplicate in-body heading",
        %{conn: conn} do
     {:ok, view, html} = live(conn, "/en/admin/crm/lists")

@@ -445,6 +445,105 @@ defmodule PhoenixKitCRM.Lists do
   end
 
   @doc """
+  Preview counts for `apply_locale_to_members/3`, over the list's currently
+  `"subscribed"` members: how many would be touched, and — separately — how
+  many of those already carry a DIFFERENT, non-blank locale than the list's.
+  The second number is what makes the "all" (overwrite) mode a real,
+  visible tradeoff in the confirm UI rather than a blind guess.
+
+  `%{total: 0, different_locale: 0}` when the list itself has no locale set
+  (nothing to preview — the UI should already gate the action on this).
+  """
+  @spec locale_apply_preview(ContactList.t()) :: %{
+          total: non_neg_integer(),
+          different_locale: non_neg_integer()
+        }
+  def locale_apply_preview(%ContactList{locale: locale}) when locale in [nil, ""],
+    do: %{total: 0, different_locale: 0}
+
+  def locale_apply_preview(%ContactList{} = list) do
+    total =
+      ListMember
+      |> where([m], m.list_uuid == ^list.uuid and m.status == "subscribed")
+      |> repo().aggregate(:count, :uuid)
+
+    different_locale =
+      ListMember
+      |> join(:inner, [m], c in Contact, on: c.uuid == m.contact_uuid)
+      |> where([m, c], m.list_uuid == ^list.uuid and m.status == "subscribed")
+      |> where([m, c], not is_nil(c.locale) and c.locale != "" and c.locale != ^list.locale)
+      |> select([m, _c], count(m.uuid))
+      |> repo().one()
+
+    %{total: total, different_locale: different_locale}
+  end
+
+  @doc """
+  Bulk-writes the list's `locale` onto its `"subscribed"` members' contacts.
+
+  `mode`:
+    * `:missing_only` — only contacts with no locale set yet (`NULL` or `""`).
+    * `:all` — every subscribed member's contact, overwriting any existing
+      locale — including one set by a DIFFERENT list this same contact also
+      belongs to. `locale` lives on the contact, not the membership, so it
+      is never list-scoped: the last list to apply its locale to a shared
+      contact wins. That's expected, not a bug.
+
+  Pass `:actor_uuid` in `opts` for the activity log entry (logged once per
+  call, with the affected count in `metadata` — not once per contact, same
+  as the list-level mutations in this module).
+
+  Returns `{:ok, updated_count}` (`0` is a valid, non-error result — e.g.
+  `:missing_only` against a list where every member already has a locale),
+  or `{:error, :no_locale}` if the list itself has no locale (defensive;
+  the UI should already gate the triggering action on this).
+  """
+  @spec apply_locale_to_members(ContactList.t(), :all | :missing_only, keyword()) ::
+          {:ok, non_neg_integer()} | {:error, :no_locale}
+  def apply_locale_to_members(list, mode, opts \\ [])
+
+  def apply_locale_to_members(%ContactList{locale: locale}, _mode, _opts)
+      when locale in [nil, ""],
+      do: {:error, :no_locale}
+
+  def apply_locale_to_members(%ContactList{} = list, mode, opts)
+      when mode in [:all, :missing_only] do
+    member_contact_uuids =
+      from(m in ListMember,
+        where: m.list_uuid == ^list.uuid and m.status == "subscribed",
+        select: m.contact_uuid
+      )
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {count, _} =
+      Contact
+      |> where([c], c.uuid in subquery(member_contact_uuids))
+      |> maybe_only_missing_locale(mode)
+      |> repo().update_all(set: [locale: list.locale, updated_at: now])
+
+    if count > 0 do
+      Activity.log("crm.list_locale_applied",
+        actor_uuid: Keyword.get(opts, :actor_uuid),
+        resource_type: "crm_list",
+        resource_uuid: list.uuid,
+        metadata: %{
+          "locale" => list.locale,
+          "mode" => Atom.to_string(mode),
+          "updated_count" => count
+        }
+      )
+    end
+
+    {:ok, count}
+  end
+
+  defp maybe_only_missing_locale(query, :missing_only),
+    do: where(query, [c], is_nil(c.locale) or c.locale == "")
+
+  defp maybe_only_missing_locale(query, :all), do: query
+
+  @doc """
   Contacts with an active (`"subscribed"`) membership on EVERY one of the
   given lists — the CRM comparison screen's cross-list overlap report.
   Requires at least 2 list uuids (an "overlap" of one list is just that

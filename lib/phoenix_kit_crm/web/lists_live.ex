@@ -132,6 +132,7 @@ defmodule PhoenixKitCRM.Web.ListsLive do
             <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
             <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
             <.table_default_header_cell>{gettext("Subscribable")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Locale")}</.table_default_header_cell>
             <.table_default_header_cell class="text-right">
               {gettext("Subscribers")}
             </.table_default_header_cell>
@@ -159,6 +160,7 @@ defmodule PhoenixKitCRM.Web.ListsLive do
                 aria-label={gettext("Subscribable")}
               />
             </.table_default_cell>
+            <.table_default_cell class="text-base-content/70">{list_locale(list)}</.table_default_cell>
             <.table_default_cell class="text-right">{list.subscriber_count}</.table_default_cell>
             <.table_default_cell class="text-right whitespace-nowrap">
               {row_menu(%{list: list, filter: @filter, id_suffix: "table"})}
@@ -182,9 +184,15 @@ defmodule PhoenixKitCRM.Web.ListsLive do
     [
       %{label: gettext("Slug"), value: list.slug},
       %{label: gettext("Status"), value: list.status},
+      %{label: gettext("Locale"), value: list_locale(list)},
       %{label: gettext("Subscribers"), value: list.subscriber_count}
     ]
   end
+
+  defp list_locale(%ContactList{locale: locale}) when is_binary(locale) and locale != "",
+    do: locale
+
+  defp list_locale(_), do: "—"
 
   # `id_suffix` distinguishes the table-cell and card_actions renders — the
   # toggleable table_default keeps BOTH views in the DOM at once (CSS-hidden,

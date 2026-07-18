@@ -274,4 +274,84 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
       assert html =~ "Solo Member"
     end
   end
+
+  describe "apply list locale to contacts" do
+    test "the toolbar button is disabled when the list has no locale", %{conn: conn} do
+      list = list_fixture()
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      assert has_element?(view, "button[disabled]", "Apply list locale to contacts")
+    end
+
+    test "the toolbar button is enabled when the list has a locale", %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      refute has_element?(view, "button[disabled]", "Apply list locale to contacts")
+    end
+
+    test "opening the modal previews the affected count and how many already differ",
+         %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      no_locale = contact_fixture(%{"locale" => nil})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+
+      html = view |> element("button", "Apply list locale to contacts") |> render_click()
+
+      assert html =~ "2 subscribed contacts will be affected"
+      assert html =~ "1 of them already has a different locale set"
+    end
+
+    test "'only contacts without a locale' mode leaves an existing locale alone",
+         %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      no_locale = contact_fixture(%{"locale" => nil})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+      view |> element("button", "Apply list locale to contacts") |> render_click()
+
+      html = view |> element("#crm-list-locale-modal .btn-primary") |> render_click()
+
+      assert html =~ "Locale applied to 1 contact"
+      assert Contacts.get_contact(no_locale.uuid).locale == "en"
+      assert Contacts.get_contact(different_locale.uuid).locale == "de"
+    end
+
+    test "'all' mode overwrites every subscribed member's locale", %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      no_locale = contact_fixture(%{"locale" => nil})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+      view |> element("button", "Apply list locale to contacts") |> render_click()
+      view |> element("input[phx-value-mode='all']") |> render_click()
+
+      html = view |> element("#crm-list-locale-modal .btn-primary") |> render_click()
+
+      assert html =~ "Locale applied to 2 contacts"
+      assert Contacts.get_contact(no_locale.uuid).locale == "en"
+      assert Contacts.get_contact(different_locale.uuid).locale == "en"
+    end
+
+    test "cancel closes the modal without applying anything", %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => nil})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+      view |> element("button", "Apply list locale to contacts") |> render_click()
+      view |> element("#crm-list-locale-modal .btn-ghost") |> render_click()
+
+      assert Contacts.get_contact(contact.uuid).locale == nil
+    end
+  end
 end

@@ -5,6 +5,7 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
 
   require Logger
 
+  alias PhoenixKit.Modules.Languages
   alias PhoenixKitCRM.{Activity, Lists, Paths}
   alias PhoenixKitCRM.Schemas.ContactList
 
@@ -120,6 +121,20 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
               </:description>
             </.checkbox>
 
+            <div>
+              <.select
+                field={@form[:locale]}
+                label={gettext("Locale")}
+                options={locale_options()}
+                prompt={gettext("Not set")}
+              />
+              <p class="text-xs text-base-content/50 mt-1">
+                {gettext(
+                  "Content language for this list's contacts. Can be bulk-applied to members from the list's page."
+                )}
+              </p>
+            </div>
+
             <div :if={@list.uuid} class="divider my-1 text-sm font-semibold text-base-content/60">
               {gettext("Status")}
             </div>
@@ -149,6 +164,13 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
   defp status_label("active"), do: gettext("Active")
   defp status_label("archived"), do: gettext("Archived")
   defp status_label(s), do: s
+
+  # Sourced from the site's configured content languages (falls back to a
+  # curated default set when the Languages module isn't configured) rather
+  # than a free-text field like `Contact.locale` — a list's locale drives a
+  # bulk-apply action, so it's worth constraining it to languages the site
+  # can actually address.
+  defp locale_options, do: Enum.map(Languages.get_display_languages(), &{&1.name, &1.code})
 
   defp safe_map(p) when is_map(p), do: p
   defp safe_map(_), do: %{}
