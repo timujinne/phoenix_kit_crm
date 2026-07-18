@@ -38,6 +38,8 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
          |> assign(:list, list)
          |> assign(:page_title, gettext("CRM — %{name}", name: list.name))
          |> assign(:page_subtitle, list_subtitle(list))
+         |> assign(:page_section, gettext("Lists"))
+         |> assign(:page_section_path, Paths.lists())
          |> assign(:members, [])
          |> assign(:has_more?, false)
          |> assign(:add_form, blank_add_form())
@@ -258,10 +260,6 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <.link navigate={Paths.lists()} class="btn btn-ghost btn-sm -ml-2">
-        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
-      </.link>
-
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body gap-4">
           <h2 class="font-semibold flex items-center gap-2">

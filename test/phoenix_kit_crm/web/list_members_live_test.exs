@@ -51,7 +51,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
     assert html =~ ~s(id="test-page-title")
     refute html =~ "<h1"
     refute has_element?(view, "h1")
-    assert has_element?(view, ~s{a[href="/en/admin/crm/lists"]}, "Lists")
+    assert has_element?(view, "#test-page-section[href='/en/admin/crm/lists']", "Lists")
   end
 
   test "adding a new contact by email creates a contact + membership and logs the actor",

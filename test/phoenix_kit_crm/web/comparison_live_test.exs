@@ -37,6 +37,15 @@ defmodule PhoenixKitCRM.Web.ComparisonLiveTest do
     assert html =~ "No active lists yet."
   end
 
+  test "the way back is the chrome breadcrumb (page_section), not an in-body header",
+       %{conn: conn} do
+    {:ok, view, html} = live(conn, "/en/admin/crm/comparison")
+
+    assert has_element?(view, "#test-page-section[href='/en/admin/crm/lists']", "Lists")
+    refute html =~ "<h1"
+    refute html =~ "<header"
+  end
+
   test "shows duplicate email groups with a count and expands to reveal the contacts",
        %{conn: conn} do
     email = unique_email()

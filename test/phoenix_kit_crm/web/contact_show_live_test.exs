@@ -21,4 +21,13 @@ defmodule PhoenixKitCRM.Web.ContactShowLiveTest do
 
     assert to =~ "/admin/crm/contacts"
   end
+
+  test "has a chrome breadcrumb back to Contacts (the rich in-body header stays, on purpose)",
+       %{conn: conn} do
+    {:ok, contact} = Contacts.create_contact(%{"name" => "Grace Hopper"})
+
+    {:ok, view, _html} = live(conn, "/en/admin/crm/contacts/#{contact.uuid}")
+
+    assert has_element?(view, "#test-page-section[href='/en/admin/crm/contacts']", "Contacts")
+  end
 end

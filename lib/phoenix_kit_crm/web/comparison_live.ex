@@ -26,6 +26,8 @@ defmodule PhoenixKitCRM.Web.ComparisonLive do
      socket
      |> assign(:page_title, gettext("CRM — Comparison"))
      |> assign(:page_subtitle, gettext("Read-only reports — nothing here changes any data."))
+     |> assign(:page_section, gettext("Lists"))
+     |> assign(:page_section_path, Paths.lists())
      |> assign(:duplicate_groups, Contacts.list_duplicate_email_groups())
      |> assign(:expanded_duplicates, MapSet.new())
      |> assign(:duplicate_contacts, %{})
@@ -77,10 +79,6 @@ defmodule PhoenixKitCRM.Web.ComparisonLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-5xl px-4 py-6 gap-6">
-      <.link navigate={Paths.lists()} class="btn btn-ghost btn-sm -ml-2">
-        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
-      </.link>
-
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body gap-4">
           <h2 class="font-semibold flex items-center gap-2">

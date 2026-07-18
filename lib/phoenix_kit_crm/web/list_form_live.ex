@@ -35,6 +35,8 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
     socket
     |> assign(:list, list)
     |> assign(:page_title, title)
+    |> assign(:page_section, gettext("Lists"))
+    |> assign(:page_section_path, Paths.lists())
     |> assign(:form, to_form(Lists.change_list(list), as: :list))
   end
 
@@ -101,10 +103,6 @@ defmodule PhoenixKitCRM.Web.ListFormLive do
   def render(assigns) do
     ~H"""
     <div class="container flex-col mx-auto px-4 py-6 max-w-2xl">
-      <.link navigate={Paths.lists()} class="btn btn-ghost btn-sm mb-3">
-        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Lists")}
-      </.link>
-
       <.form for={@form} id="crm-list-form" phx-change="validate" phx-submit="save">
         <div class="card bg-base-100 shadow-sm">
           <div class="card-body flex flex-col gap-5">

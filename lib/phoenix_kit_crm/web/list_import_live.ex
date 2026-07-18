@@ -33,7 +33,8 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
          socket
          |> assign(:list, list)
          |> assign(:page_title, gettext("CRM — Import contacts"))
-         |> assign(:page_subtitle, list.name)
+         |> assign(:page_section, list.name)
+         |> assign(:page_section_path, Paths.list_members(list.uuid))
          |> assign(:preview_limit, @preview_limit)
          |> allow_upload(:file,
            accept: ~w(.csv .txt),
@@ -190,10 +191,6 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-4xl px-4 py-6 gap-6">
-      <.link navigate={Paths.list_members(@list.uuid)} class="btn btn-ghost btn-sm -ml-2">
-        <.icon name="hero-arrow-left" class="w-4 h-4" /> {gettext("Back to members")}
-      </.link>
-
       <div :if={@phase == :input} class="grid gap-6 md:grid-cols-2">
         <div class="card bg-base-100 shadow-sm">
           <div class="card-body gap-4">

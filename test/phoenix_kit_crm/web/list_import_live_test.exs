@@ -30,6 +30,22 @@ defmodule PhoenixKitCRM.Web.ListImportLiveTest do
     assert html =~ "Upload a file"
   end
 
+  test "the way back is the chrome breadcrumb, pointing at THIS list's members (not Lists)",
+       %{conn: conn} do
+    list = list_fixture(%{"name" => "Beta Testers"})
+
+    {:ok, view, html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/import")
+
+    assert has_element?(
+             view,
+             "#test-page-section[href='/en/admin/crm/lists/#{list.uuid}/members']",
+             "Beta Testers"
+           )
+
+    refute html =~ "<h1"
+    refute html =~ "<header"
+  end
+
   test "previewing pasted emails shows counts and writes nothing to the database", %{conn: conn} do
     list = list_fixture()
     contact_count_before = length(Contacts.list_contacts())

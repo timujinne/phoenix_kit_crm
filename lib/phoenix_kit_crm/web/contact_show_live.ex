@@ -52,7 +52,9 @@ defmodule PhoenixKitCRM.Web.ContactShowLive do
          |> assign(:avatar_url, Attachments.avatar_url(contact))
          |> assign(:membership, Contacts.primary_membership(contact))
          |> assign(:tz_offset, tz_offset(socket.assigns[:phoenix_kit_current_user]))
-         |> assign(:page_title, Contact.display_name(contact))}
+         |> assign(:page_title, Contact.display_name(contact))
+         |> assign(:page_section, gettext("Contacts"))
+         |> assign(:page_section_path, Paths.contacts())}
     end
   end
 
