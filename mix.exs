@@ -1,7 +1,7 @@
 defmodule PhoenixKitCRM.MixProject do
   use Mix.Project
 
-  @version "0.2.4"
+  @version "0.2.5"
   @source_url "https://github.com/BeamLabEU/phoenix_kit_crm"
 
   def project do
@@ -20,7 +20,7 @@ defmodule PhoenixKitCRM.MixProject do
       package: package(),
 
       # Dialyzer
-      dialyzer: [plt_add_apps: [:phoenix_kit], ignore_warnings: ".dialyzer_ignore.exs"],
+      dialyzer: [plt_add_apps: [:phoenix_kit, :mix], ignore_warnings: ".dialyzer_ignore.exs"],
 
       # Docs
       name: "PhoenixKitCRM",
@@ -72,7 +72,7 @@ defmodule PhoenixKitCRM.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper,
       # Dashboard tabs, and the admin layout this module renders into.
-      #
+#
       # Stage-3 lists/import code on this branch (feature/crm-contact-lists)
       # additionally requires core migration V152 (`email_send_profiles` +
       # `crm_lists`/`crm_list_members` DDL) — not yet published to Hex as of
@@ -81,7 +81,7 @@ defmodule PhoenixKitCRM.MixProject do
       # until then, a core built from `feature/email-send-profiles-core`
       # (or later) is required — `PHOENIX_KIT_PATH=/app` (see `pk_dep/3`
       # below) swaps it in locally without touching this pin.
-      pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.189"),
+      pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.197"),
 
       # Hard, compile-time dep for the contact profile's Comments tab
       # (`use PhoenixKitComments.Embed` + CommentsComponent). Runtime-gated on
