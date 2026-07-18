@@ -46,7 +46,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
          |> assign(:email_check, nil)
          |> assign(:show_locale_modal, false)
          |> assign(:locale_mode, "missing_only")
-         |> assign(:locale_preview, %{total: 0, different_locale: 0})}
+         |> assign(:locale_preview, %{total: 0, missing_locale: 0, different_locale: 0})}
     end
   end
 
@@ -268,6 +268,16 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   defp blank?(""), do: true
   defp blank?(_), do: false
 
+  # How many contacts the CURRENTLY SELECTED mode would actually touch —
+  # `:all` touches every subscribed member (`total`), `:missing_only`
+  # touches only the subset with no locale yet (`missing_locale`). Showing
+  # `total` regardless of mode overstated the impact for `:missing_only`
+  # (the default mode) whenever some members already had a different
+  # locale — this keeps the confirm modal's number matching what
+  # apply_locale_to_members/3 will actually do.
+  defp affected_count(%{total: total}, "all"), do: total
+  defp affected_count(%{missing_locale: missing}, _mode), do: missing
+
   # Takes an assigns-shaped map — either a LiveView `socket.assigns` (from an
   # event handler) or the `assigns` passed into `render/1` (from the
   # template) — both expose `:filter`/`:search`/`:page`/`:list` the same way.
@@ -474,17 +484,26 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
             {ngettext(
               "%{count} subscribed contact will be affected.",
               "%{count} subscribed contacts will be affected.",
-              @locale_preview.total,
-              count: @locale_preview.total
+              affected_count(@locale_preview, @locale_mode),
+              count: affected_count(@locale_preview, @locale_mode)
             )}
           </p>
           <p :if={@locale_preview.different_locale > 0} class="text-sm text-warning">
-            {ngettext(
-              "%{count} of them already has a different locale set.",
-              "%{count} of them already have a different locale set.",
-              @locale_preview.different_locale,
-              count: @locale_preview.different_locale
-            )}
+            <%= if @locale_mode == "all" do %>
+              {ngettext(
+                "%{count} of them already has a different locale set — it will be overwritten.",
+                "%{count} of them already have a different locale set — they will be overwritten.",
+                @locale_preview.different_locale,
+                count: @locale_preview.different_locale
+              )}
+            <% else %>
+              {ngettext(
+                "%{count} contact already has a different locale set and will be left unchanged.",
+                "%{count} contacts already have a different locale set and will be left unchanged.",
+                @locale_preview.different_locale,
+                count: @locale_preview.different_locale
+              )}
+            <% end %>
           </p>
 
           <fieldset class="flex flex-col gap-2">
@@ -522,7 +541,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
             class="btn btn-primary"
             phx-click="apply_locale"
             phx-disable-with={gettext("Applying…")}
-            disabled={@locale_preview.total == 0}
+            disabled={affected_count(@locale_preview, @locale_mode) == 0}
           >
             {gettext("Apply")}
           </button>

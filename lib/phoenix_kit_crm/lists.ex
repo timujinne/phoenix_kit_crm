@@ -446,36 +446,53 @@ defmodule PhoenixKitCRM.Lists do
 
   @doc """
   Preview counts for `apply_locale_to_members/3`, over the list's currently
-  `"subscribed"` members: how many would be touched, and — separately — how
-  many of those already carry a DIFFERENT, non-blank locale than the list's.
-  The second number is what makes the "all" (overwrite) mode a real,
-  visible tradeoff in the confirm UI rather than a blind guess.
+  `"subscribed"` members:
 
-  `%{total: 0, different_locale: 0}` when the list itself has no locale set
-  (nothing to preview — the UI should already gate the action on this).
+    * `total` — how many members `:all` mode would touch.
+    * `missing_locale` — how many of those have no locale yet (`NULL` or
+      `""`) — how many `:missing_only` mode would touch. Deliberately a
+      SEPARATE count rather than deriving the modal's "will be affected"
+      number from `total` alone: `:missing_only` is the default mode, and
+      touches a strict subset of `total` whenever `different_locale` > 0 —
+      showing `total` regardless of the selected mode overstates the
+      impact for the common case.
+    * `different_locale` — how many already carry a DIFFERENT, non-blank
+      locale than the list's. What makes "all" (overwrite) a real, visible
+      tradeoff in the confirm UI rather than a blind guess.
+
+  `%{total: 0, missing_locale: 0, different_locale: 0}` when the list
+  itself has no locale set (nothing to preview — the UI should already
+  gate the action on this).
   """
   @spec locale_apply_preview(ContactList.t()) :: %{
           total: non_neg_integer(),
+          missing_locale: non_neg_integer(),
           different_locale: non_neg_integer()
         }
   def locale_apply_preview(%ContactList{locale: locale}) when locale in [nil, ""],
-    do: %{total: 0, different_locale: 0}
+    do: %{total: 0, missing_locale: 0, different_locale: 0}
 
   def locale_apply_preview(%ContactList{} = list) do
-    total =
-      ListMember
-      |> where([m], m.list_uuid == ^list.uuid and m.status == "subscribed")
-      |> repo().aggregate(:count, :uuid)
-
-    different_locale =
+    subscribed_members =
       ListMember
       |> join(:inner, [m], c in Contact, on: c.uuid == m.contact_uuid)
       |> where([m, c], m.list_uuid == ^list.uuid and m.status == "subscribed")
-      |> where([m, c], not is_nil(c.locale) and c.locale != "" and c.locale != ^list.locale)
+
+    total = subscribed_members |> select([m, _c], count(m.uuid)) |> repo().one()
+
+    missing_locale =
+      subscribed_members
+      |> where([_m, c], is_nil(c.locale) or c.locale == "")
       |> select([m, _c], count(m.uuid))
       |> repo().one()
 
-    %{total: total, different_locale: different_locale}
+    different_locale =
+      subscribed_members
+      |> where([_m, c], not is_nil(c.locale) and c.locale != "" and c.locale != ^list.locale)
+      |> select([m, _c], count(m.uuid))
+      |> repo().one()
+
+    %{total: total, missing_locale: missing_locale, different_locale: different_locale}
   end
 
   @doc """

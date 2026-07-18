@@ -290,7 +290,12 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
       refute has_element?(view, "button[disabled]", "Apply list locale to contacts")
     end
 
-    test "opening the modal previews the affected count and how many already differ",
+    # Regression: the modal used to always show `total` ("2 subscribed
+    # contacts will be affected") regardless of the selected mode — wrong
+    # for the default "missing_only" mode, which only actually touches the
+    # subset with no locale yet. The displayed count must match what
+    # apply_locale_to_members/3 will actually update for the CURRENT mode.
+    test "opening the modal (default 'missing_only' mode) previews only the count that mode would touch",
          %{conn: conn} do
       list = list_fixture(%{"locale" => "en"})
       no_locale = contact_fixture(%{"locale" => nil})
@@ -302,8 +307,25 @@ defmodule PhoenixKitCRM.Web.ListMembersLiveTest do
 
       html = view |> element("button", "Apply list locale to contacts") |> render_click()
 
+      assert html =~ "1 subscribed contact will be affected"
+      assert html =~ "1 contact already has a different locale set and will be left unchanged"
+    end
+
+    test "switching to 'all' mode updates the previewed count to the full total",
+         %{conn: conn} do
+      list = list_fixture(%{"locale" => "en"})
+      no_locale = contact_fixture(%{"locale" => nil})
+      different_locale = contact_fixture(%{"locale" => "de"})
+      {:ok, _} = Lists.add_contact_to_list(no_locale, list)
+      {:ok, _} = Lists.add_contact_to_list(different_locale, list)
+
+      {:ok, view, _html} = live(conn, "/en/admin/crm/lists/#{list.uuid}/members")
+      view |> element("button", "Apply list locale to contacts") |> render_click()
+
+      html = view |> element("input[phx-value-mode='all']") |> render_click()
+
       assert html =~ "2 subscribed contacts will be affected"
-      assert html =~ "1 of them already has a different locale set"
+      assert html =~ "1 of them already has a different locale set — it will be overwritten"
     end
 
     test "'only contacts without a locale' mode leaves an existing locale alone",

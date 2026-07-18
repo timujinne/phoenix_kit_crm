@@ -479,10 +479,14 @@ defmodule PhoenixKitCRM.ListsTest do
       contact = contact_fixture()
       {:ok, _} = Lists.add_contact_to_list(contact, list)
 
-      assert Lists.locale_apply_preview(list) == %{total: 0, different_locale: 0}
+      assert Lists.locale_apply_preview(list) == %{
+               total: 0,
+               missing_locale: 0,
+               different_locale: 0
+             }
     end
 
-    test "counts subscribed members, and separately how many already have a different locale" do
+    test "counts subscribed members, split into missing-locale and different-locale subsets" do
       list = list_fixture(%{"locale" => "en"})
 
       no_locale = contact_fixture(%{"locale" => nil})
@@ -497,7 +501,11 @@ defmodule PhoenixKitCRM.ListsTest do
       {:ok, removed_member} = Lists.add_contact_to_list(removed_contact, list)
       {:ok, _} = Lists.remove_from_list(removed_member)
 
-      assert Lists.locale_apply_preview(list) == %{total: 3, different_locale: 1}
+      assert Lists.locale_apply_preview(list) == %{
+               total: 3,
+               missing_locale: 1,
+               different_locale: 1
+             }
     end
   end
 
