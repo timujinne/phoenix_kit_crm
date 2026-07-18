@@ -24,8 +24,10 @@ defmodule PhoenixKitCRM.Web.CompaniesLiveTest do
     refute has_element?(view, "h1")
   end
 
-  test "New company is reachable without a page-level header, in the toolbar row",
+  test "New company is reachable in the table's toolbar, not a page-level header",
        %{conn: conn} do
+    {:ok, _company} = Companies.create_company(%{"name" => "Globex Corporation"})
+
     {:ok, view, _html} = live(conn, "/en/admin/crm/companies")
 
     assert has_element?(view, ~s{a[href="/en/admin/crm/companies/new"]}, "New company")

@@ -29,8 +29,10 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
     refute has_element?(view, "h1")
   end
 
-  test "New contact is reachable without a page-level header, in the toolbar row",
+  test "New contact is reachable in the table's toolbar, not a page-level header",
        %{conn: conn} do
+    {:ok, _contact} = Contacts.create_contact(%{"name" => "Ada Lovelace"})
+
     {:ok, view, _html} = live(conn, "/en/admin/crm/contacts")
 
     assert has_element?(view, ~s{a[href="/en/admin/crm/contacts/new"]}, "New contact")
@@ -42,8 +44,12 @@ defmodule PhoenixKitCRM.Web.ContactsLiveTest do
 
     {:ok, view, _html} = live(conn, "/en/admin/crm/contacts")
 
+    # toggleable table_default keeps both the table-view and card-view rows
+    # in the DOM at once (CSS-hidden, not removed) — scope to the
+    # table-view copy (id_suffix "table") so the selector matches exactly
+    # one element.
     view
-    |> element(~s{[phx-click="trash"][phx-value-uuid="#{contact.uuid}"]})
+    |> element(~s{#crm-contact-menu-table-#{contact.uuid} [phx-click="trash"]})
     |> render_click()
 
     assert Contacts.get_contact(contact.uuid).status == "trashed"
