@@ -17,7 +17,8 @@ defmodule PhoenixKitCRM.Contacts do
   alias PhoenixKit.RepoHelper
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
-  alias PhoenixKitCRM.Schemas.{CompanyMembership, Contact}
+  alias PhoenixKitCRM.Lists
+  alias PhoenixKitCRM.Schemas.{CompanyMembership, Contact, ContactList, ListMember}
   alias PhoenixKitCRM.Search
   alias PhoenixKitCRM.SoftDelete
 
@@ -168,9 +169,53 @@ defmodule PhoenixKitCRM.Contacts do
 
   def restore_contact(%Contact{}), do: {:error, :not_trashed}
 
-  @doc "Permanently deletes a contact (cascades memberships + interactions)."
+  @doc """
+  Permanently deletes a contact (cascades memberships + interactions at
+  the DB level), keeping every affected list's `subscriber_count` in
+  sync.
+
+  The FK cascade removes `ListMember` rows entirely, bypassing
+  `Lists.remove_from_list/2`'s atomic counter decrement — that path only
+  exists for a live status flip (`"subscribed"` → `"removed"`), not a
+  disappearing row. Without this, deleting a contact who was still
+  `"subscribed"` on a list leaves that list's `subscriber_count`
+  permanently overcounted (nothing else ever revisits it). Snapshots
+  which lists the contact was actually `"subscribed"` on *before* the
+  cascade (a `"removed"` membership was never counted, so it's excluded
+  — deleting it changes nothing), then recounts exactly those lists —
+  `Lists.recount_list/1`, the same repair function used for the
+  Settings-page "Recount" action — in the same transaction as the
+  delete itself.
+  """
   @spec delete_contact(Contact.t()) :: {:ok, Contact.t()} | {:error, Ecto.Changeset.t()}
-  def delete_contact(%Contact{} = contact), do: repo().delete(contact)
+  def delete_contact(%Contact{} = contact) do
+    affected_list_uuids =
+      ListMember
+      |> where([m], m.contact_uuid == ^contact.uuid and m.status == "subscribed")
+      |> select([m], m.list_uuid)
+      |> repo().all()
+      |> Enum.uniq()
+
+    repo().transaction(fn ->
+      case repo().delete(contact) do
+        {:ok, deleted} ->
+          Enum.each(affected_list_uuids, &recount_by_uuid/1)
+          deleted
+
+        {:error, changeset} ->
+          repo().rollback(changeset)
+      end
+    end)
+  end
+
+  defp recount_by_uuid(list_uuid) do
+    case repo().get(ContactList, list_uuid) do
+      # The list itself was deleted concurrently (or in the same cascade,
+      # if it belonged to this contact somehow) — nothing left to recount.
+      nil -> :ok
+      list -> Lists.recount_list(list)
+    end
+  end
 
   @doc """
   Searches contacts by name/email (case-insensitive) for the parties picker.
