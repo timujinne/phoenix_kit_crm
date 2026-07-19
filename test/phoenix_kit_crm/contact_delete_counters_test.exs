@@ -92,6 +92,59 @@ defmodule PhoenixKitCRM.ContactDeleteCountersTest do
       assert Lists.get_list!(list_a.uuid).subscriber_count == 0
       assert Lists.get_list!(list_b.uuid).subscriber_count == 0
     end
+
+    test "a failed delete rolls back the whole transaction, leaving counters exactly as they were" do
+      contact = contact_fixture()
+      list = list_fixture()
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      assert Lists.get_list!(list.uuid).subscriber_count == 1
+
+      # Force repo().delete(contact) to fail deterministically: the row is
+      # already gone (bypassing delete_contact/1 to remove it directly, the
+      # same shape of gap the FK cascade always leaves — subscriber_count
+      # is NOT decremented by this raw delete). The stale `contact` struct
+      # then makes delete_contact/1's own repo().delete/1 match zero rows,
+      # raising Ecto.StaleEntryError — same rollback trigger
+      # repo().transaction/1 uses for any failure, exercised without a
+      # flaky concurrency race.
+      Repo.delete!(contact)
+
+      assert_raise Ecto.StaleEntryError, fn -> Contacts.delete_contact(contact) end
+
+      # The failed second call must not have left the counter in some new,
+      # different-but-still-wrong state.
+      assert Lists.get_list!(list.uuid).subscriber_count == 1
+    end
+
+    test "a list gone by the time recount_by_uuid checks it doesn't crash the delete (nil branch)" do
+      contact = contact_fixture()
+      list = list_fixture()
+      {:ok, _member} = Lists.add_contact_to_list(contact, list)
+
+      # Reproduces "the list vanished before delete_contact/1 recounts it"
+      # deterministically, without a flaky concurrency race: temporarily
+      # drop the FK (rolled back with the rest of this sandboxed
+      # transaction — never touches the real schema) so the ListMember
+      # row can outlive the ContactList row it references, then delete
+      # the list directly — the membership row itself is untouched, still
+      # "subscribed", so delete_contact/1's own snapshot below still
+      # finds it and includes this list_uuid. What's gone is the list
+      # ROW, so its subsequent recount_by_uuid/1 call hits the `nil ->
+      # :ok` branch, not the rescue clause (that one guards a narrower
+      # TOCTOU gap between recount_by_uuid's own get/2 and
+      # Lists.recount_list/1's update_all, not reproducible without a
+      # genuine two-connection race).
+      Repo.query!("""
+      ALTER TABLE phoenix_kit_crm_list_members
+        DROP CONSTRAINT phoenix_kit_crm_list_members_list_uuid_fkey
+      """)
+
+      Repo.delete!(list)
+
+      assert {:ok, _} = Contacts.delete_contact(contact)
+      assert Repo.get(PhoenixKitCRM.Schemas.Contact, contact.uuid) == nil
+    end
   end
 
   describe "trash_contact/1 (soft delete)" do

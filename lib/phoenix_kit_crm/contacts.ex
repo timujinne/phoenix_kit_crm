@@ -220,9 +220,33 @@ defmodule PhoenixKitCRM.Contacts do
     case repo().get(ContactList, list_uuid) do
       # The list itself was deleted concurrently (or in the same cascade,
       # if it belonged to this contact somehow) — nothing left to recount.
-      nil -> :ok
-      list -> Lists.recount_list(list)
+      nil ->
+        :ok
+
+      list ->
+        # Lists.recount_list/1 SETs subscriber_count to an absolute
+        # recomputed value, so it can race a concurrent
+        # Lists.add_contact_to_list/2's relative `inc:` the same way any
+        # other Settings-page "Recount" run already can — an inherited
+        # class of race, not introduced by this delete path, and not
+        # worth a per-list `FOR UPDATE` lock here to close.
+        Lists.recount_list(list)
+        :ok
     end
+  rescue
+    # set_counter/2 (private to Lists) hard-asserts {1, _} from its own
+    # update_all — a narrower TOCTOU gap than the one this module's
+    # delete_contact/1 doc already discusses: between repo().get/2 finding
+    # the list above and recount_list/1's update_all actually running, a
+    # concurrent request can still delete that same list. Left as a hard
+    # assert in Lists (shared by the Settings-page "Recount" action, where
+    # the list is already the one loaded for the current request and this
+    # particular race doesn't apply) rather than loosened there for every
+    # caller — only this call site, sitting inside delete_contact/1's
+    # transaction, needs to tolerate "the list vanished mid-recount"
+    # instead of rolling back the whole contact deletion over a count
+    # that's moot anyway (the list is gone).
+    MatchError -> :ok
   end
 
   @doc """
