@@ -761,6 +761,36 @@ defmodule PhoenixKitCRM.ListsTest do
 
       assert overlap == [contact.uuid]
     end
+
+    test "malformed uuids are dropped instead of raising an Ecto cast error" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+      contact = contact_fixture()
+
+      {:ok, _} = Lists.add_contact_to_list(contact, list_a)
+      {:ok, _} = Lists.add_contact_to_list(contact, list_b)
+
+      assert Lists.list_overlap([list_a.uuid, "not-a-uuid", list_b.uuid])
+             |> Enum.map(& &1.uuid) == [contact.uuid]
+
+      # Fewer than 2 valid uuids left — no overlap to compute.
+      assert Lists.list_overlap([list_a.uuid, "not-a-uuid"]) == []
+    end
+
+    test "trashed contacts are excluded from the overlap report" do
+      list_a = list_fixture()
+      list_b = list_fixture()
+      contact = contact_fixture()
+
+      {:ok, _} = Lists.add_contact_to_list(contact, list_a)
+      {:ok, _} = Lists.add_contact_to_list(contact, list_b)
+
+      assert Lists.list_overlap([list_a.uuid, list_b.uuid]) != []
+
+      {:ok, _} = Contacts.trash_contact(contact)
+
+      assert Lists.list_overlap([list_a.uuid, list_b.uuid]) == []
+    end
   end
 
   # ── PubSub ──────────────────────────────────────────────────────────

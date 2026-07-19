@@ -53,7 +53,14 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
           end
 
         page = parse_page(params["page"])
-        search = params["search"] || ""
+
+        # Plug decodes ?search[x]=y as a map/list — a forged non-binary
+        # search param would crash URI.encode_query in members_path/2 below.
+        search =
+          case params["search"] do
+            s when is_binary(s) -> s
+            _ -> ""
+          end
 
         {:noreply,
          socket
@@ -72,9 +79,11 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   # ── Search / pagination ──────────────────────────────────────────────
 
   @impl true
-  def handle_event("search", %{"search" => term}, socket) do
+  def handle_event("search", %{"search" => term}, socket) when is_binary(term) do
     {:noreply, push_patch(socket, to: members_path(socket.assigns, search: term, page: 1))}
   end
+
+  def handle_event("search", _params, socket), do: {:noreply, socket}
 
   def handle_event("filter", %{"status" => status}, socket) do
     {:noreply,
@@ -112,9 +121,16 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
   def handle_event("resubscribe", _params, socket) do
     case socket.assigns.email_check do
-      {:removed, %ListMember{} = member} ->
-        contact = member.contact || %Contact{uuid: member.contact_uuid}
+      {:removed, %ListMember{contact: %Contact{} = contact}} ->
         resubscribe(socket, contact)
+
+      {:removed, %ListMember{}} ->
+        # The membership's contact row is gone entirely (only possible via a
+        # direct DB delete — contacts are soft-deleted, which keeps the
+        # preload intact). Fabricating a bare %Contact{} here would
+        # reactivate the membership with email: nil, wiping the denormalized
+        # email slot that idx_crm_list_members_list_email guards.
+        {:noreply, put_flash(socket, :error, gettext("Could not resubscribe this contact"))}
 
       _ ->
         {:noreply, socket}
@@ -208,9 +224,11 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
     # page (a stale bookmark, a bulk remove that shrank the last page, or a
     # forged ?page=) still shouldn't show the user an unexplained empty
     # table. If the requested page came back empty and it wasn't actually
-    # page 1, that's the tell — fall back to page 1 instead.
+    # page 1, that's the tell — patch back to page 1 (handle_params then
+    # refetches), which also fixes the address bar so a refresh doesn't
+    # re-run the double fetch.
     if socket.assigns.members == [] and socket.assigns.page > 1 do
-      socket |> assign(:page, 1) |> fetch_members()
+      push_patch(socket, to: members_path(socket.assigns, page: 1))
     else
       socket
     end
@@ -248,15 +266,16 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   # bookmark or a crawler hitting `?page=abc` (or a stray trailing
   # `?page=`) would crash the LiveView. `Integer.parse/1` doesn't raise;
   # anything it can't read at all (or the `nil` from no param) falls back
-  # to page 1.
-  defp parse_page(nil), do: 1
-
-  defp parse_page(param) do
+  # to page 1. Plug decodes `?page[a]=1` as a map/list, so a non-binary
+  # param falls back too rather than raising in Integer.parse/1.
+  defp parse_page(param) when is_binary(param) do
     case Integer.parse(param) do
       {n, _rest} -> max(n, 1)
       :error -> 1
     end
   end
+
+  defp parse_page(_), do: 1
 
   defp blank_add_form,
     do: to_form(%{"email" => "", "name" => "", "locale" => ""}, as: :add_member)
@@ -296,7 +315,7 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
 
   defp check_email(_list, email) when email in [nil, ""], do: nil
 
-  defp check_email(list, email) do
+  defp check_email(list, email) when is_binary(email) do
     normalized = email |> String.trim() |> String.downcase()
 
     case Lists.get_member_by_email(list, normalized) do
@@ -305,6 +324,9 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
       %ListMember{} = member -> {:active, member}
     end
   end
+
+  # A forged event with a non-binary email value — treat as "no check".
+  defp check_email(_list, _email), do: nil
 
   defp do_add_member(socket, params) do
     attrs = Map.take(params, ["email", "name", "locale"])

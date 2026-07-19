@@ -36,7 +36,14 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
       end
 
     page = parse_page(params["page"])
-    search = params["search"] || ""
+
+    # Plug decodes ?search[x]=y as a map/list — a forged non-binary search
+    # param would crash URI.encode_query in companies_path/2 below.
+    search =
+      case params["search"] do
+        s when is_binary(s) -> s
+        _ -> ""
+      end
 
     {:noreply,
      socket
@@ -49,9 +56,11 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   # ── Search / pagination ──────────────────────────────────────────────
 
   @impl true
-  def handle_event("search", %{"search" => term}, socket) do
+  def handle_event("search", %{"search" => term}, socket) when is_binary(term) do
     {:noreply, push_patch(socket, to: companies_path(socket.assigns, search: term, page: 1))}
   end
+
+  def handle_event("search", _params, socket), do: {:noreply, socket}
 
   def handle_event("trash", %{"uuid" => uuid}, socket) do
     with %Company{} = c <- Companies.get_company(uuid),
@@ -70,6 +79,11 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   def handle_event("restore", %{"uuid" => uuid}, socket) do
     with %Company{} = c <- Companies.get_company(uuid),
          {:ok, _} <- Companies.restore_company(c) do
+      Activity.log(
+        "crm.company_restored",
+        Activity.actor_opts(socket) ++ [resource_type: "crm_company", resource_uuid: uuid]
+      )
+
       {:noreply, socket |> put_flash(:info, gettext("Company restored")) |> load()}
     else
       _ -> {:noreply, put_flash(socket, :error, gettext("Could not restore company"))}
@@ -273,15 +287,16 @@ defmodule PhoenixKitCRM.Web.CompaniesLive do
   # bookmark or a crawler hitting `?page=abc` (or a stray trailing
   # `?page=`) would crash the LiveView. `Integer.parse/1` doesn't raise;
   # anything it can't read at all (or the `nil` from no param) falls back
-  # to page 1.
-  defp parse_page(nil), do: 1
-
-  defp parse_page(param) do
+  # to page 1. Plug decodes `?page[a]=1` as a map/list, so a non-binary
+  # param falls back too rather than raising in Integer.parse/1.
+  defp parse_page(param) when is_binary(param) do
     case Integer.parse(param) do
       {n, _rest} -> max(n, 1)
       :error -> 1
     end
   end
+
+  defp parse_page(_), do: 1
 
   # Distinguishes a genuinely empty result from an empty PAGE of a non-empty
   # one (a stale pagination link after a bulk delete, or a page number past

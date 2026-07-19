@@ -328,9 +328,15 @@ defmodule PhoenixKitCRM.Contacts do
 
   defp maybe_search_contacts(query, opts) do
     case Keyword.get(opts, :search) do
-      term when is_binary(term) and term != "" ->
-        like = Search.like_pattern(term)
-        where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
+      term when is_binary(term) ->
+        case String.trim(term) do
+          "" ->
+            query
+
+          trimmed ->
+            like = Search.like_pattern(trimmed)
+            where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
+        end
 
       _ ->
         query

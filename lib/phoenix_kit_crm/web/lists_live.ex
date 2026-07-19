@@ -32,19 +32,16 @@ defmodule PhoenixKitCRM.Web.ListsLive do
 
   @impl true
   def handle_event("toggle_subscribable", %{"uuid" => uuid}, socket) do
-    case Lists.get_list(uuid) do
-      %ContactList{} = list ->
-        {:ok, _} =
-          Lists.update_list(
-            list,
-            %{"subscribable" => !list.subscribable},
-            Activity.actor_opts(socket)
-          )
-
-        {:noreply, load(socket)}
-
-      nil ->
-        {:noreply, socket}
+    with %ContactList{} = list <- Lists.get_list(uuid),
+         {:ok, _} <-
+           Lists.update_list(
+             list,
+             %{"subscribable" => !list.subscribable},
+             Activity.actor_opts(socket)
+           ) do
+      {:noreply, load(socket)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, gettext("Could not update list"))}
     end
   end
 
@@ -93,10 +90,10 @@ defmodule PhoenixKitCRM.Web.ListsLive do
       <.empty_state
         :if={@lists == []}
         icon="hero-envelope"
-        title={gettext("No lists yet.")}
+        title={empty_title(@filter)}
         variant="card"
       >
-        <.link navigate={Paths.list_new()} class="btn btn-primary">
+        <.link :if={@filter == "active"} navigate={Paths.list_new()} class="btn btn-primary">
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Create first list")}
         </.link>
       </.empty_state>
@@ -193,6 +190,9 @@ defmodule PhoenixKitCRM.Web.ListsLive do
     do: locale
 
   defp list_locale(_), do: "—"
+
+  defp empty_title("archived"), do: gettext("No archived lists.")
+  defp empty_title(_), do: gettext("No lists yet.")
 
   # `id_suffix` distinguishes the table-cell and card_actions renders — the
   # toggleable table_default keeps BOTH views in the DOM at once (CSS-hidden,

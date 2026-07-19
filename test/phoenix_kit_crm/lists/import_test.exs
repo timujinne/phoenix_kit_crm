@@ -333,6 +333,20 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
       assert Lists.list_members(list) == []
       assert Repo.aggregate(Contact, :count, :uuid) == count_before
     end
+
+    test "return [] for malformed CSV instead of raising NimbleCSV.ParseError" do
+      # Unterminated quoted field — NimbleCSV raises on this by default.
+      assert Import.parse_csv_rows("email,name\n\"unterminated@example.com,A\n") == []
+    end
+
+    test "return [] for non-UTF-8 content instead of raising" do
+      # A Windows-1252/Latin-1 export (Excel's default in many locales) —
+      # 0xE9 is "é" in Latin-1, invalid as standalone UTF-8.
+      assert Import.parse_csv_rows(<<"email,name\njos", 0xE9, "@example.com,Jos", 0xE9, "\n">>) ==
+               []
+
+      assert Import.parse_text_rows(<<"jos", 0xE9, "@example.com\n">>) == []
+    end
   end
 
   describe "preview_rows/2" do

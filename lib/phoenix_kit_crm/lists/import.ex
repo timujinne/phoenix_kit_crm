@@ -103,7 +103,9 @@ defmodule PhoenixKitCRM.Lists.Import do
   Parses CSV content into `{line, attrs}` rows WITHOUT writing anything —
   the same parser `import_csv/3` uses internally, exposed for the import
   UI's dry-run preview and chunked processing (`run_chunk/4`) so neither
-  has to duplicate the parsing.
+  has to duplicate the parsing. Non-UTF-8 content and malformed CSV (e.g.
+  an unterminated quote, which `NimbleCSV` raises on) return `[]` rather
+  than crashing the caller.
   """
   @spec parse_csv_rows(String.t()) :: [{pos_integer(), map()}]
   def parse_csv_rows(content), do: parse_csv(content)
@@ -111,6 +113,17 @@ defmodule PhoenixKitCRM.Lists.Import do
   @doc "Same as `parse_csv_rows/1`, for plaintext/clipboard content."
   @spec parse_text_rows(String.t()) :: [{pos_integer(), map()}]
   def parse_text_rows(content), do: parse_text(content)
+
+  @doc """
+  Puts a report's `rows` back into file order. Reports threaded through
+  `run_chunk/4` accumulate rows prepended (newest first) — appending per row
+  would be O(n²) on a file near the upload size limit — so a caller that
+  renders row detail must finalize once when the run completes. `run/3` and
+  `preview_rows/2` already return finalized reports.
+  """
+  @spec finalize_report(ImportReport.t()) :: ImportReport.t()
+  def finalize_report(%ImportReport{} = report),
+    do: %{report | rows: Enum.reverse(report.rows)}
 
   @doc """
   Classifies every row exactly like `import_csv/3`/`import_text/3` would,
@@ -143,7 +156,7 @@ defmodule PhoenixKitCRM.Lists.Import do
         preview_row(email, members_by_email)
       end)
 
-    report
+    finalize_report(report)
   end
 
   defp distinct_emails(parsed_rows) do
@@ -166,7 +179,8 @@ defmodule PhoenixKitCRM.Lists.Import do
   chunk boundaries. Lets a caller (the import UI) process a huge file in
   chunks with a progress update between each, instead of blocking on the
   whole file in one pass. `opts` accepts `:actor_uuid`/`:source` like
-  `import_csv/3`.
+  `import_csv/3`. Rows accumulate newest-first (see `finalize_report/1`) —
+  call `finalize_report/1` on the report once the run completes.
   """
   @spec run_chunk(
           [{pos_integer(), map()}],
@@ -188,6 +202,23 @@ defmodule PhoenixKitCRM.Lists.Import do
   # ── Parsing ─────────────────────────────────────────────────────────
 
   defp parse_csv(content) do
+    # Guard before NimbleCSV ever sees the content: a Windows-1252/Latin-1
+    # export (Excel's default in many locales) is not valid UTF-8 and would
+    # either raise here or crash the INSERT downstream in Postgres, and a
+    # malformed CSV (e.g. an unterminated quote) makes NimbleCSV raise
+    # NimbleCSV.ParseError. Both mean "no usable rows", not a dead LiveView.
+    if String.valid?(content) do
+      try do
+        do_parse_csv(content)
+      rescue
+        NimbleCSV.ParseError -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp do_parse_csv(content) do
     case content |> strip_bom() |> NimbleCSV.RFC4180.parse_string(skip_headers: false) do
       [] ->
         []
@@ -227,20 +258,26 @@ defmodule PhoenixKitCRM.Lists.Import do
   end
 
   defp parse_text(content) do
-    content
-    |> strip_bom()
-    |> String.split(~r/\r\n|\r|\n/)
-    |> Enum.with_index(1)
-    |> Enum.reduce([], fn {raw_line, line}, acc ->
-      case blank_to_nil(raw_line) do
-        nil ->
-          acc
+    if String.valid?(content) do
+      content
+      |> strip_bom()
+      |> String.split(~r/\r\n|\r|\n/)
+      |> Enum.with_index(1)
+      |> Enum.reduce([], &text_row/2)
+      |> Enum.reverse()
+    else
+      []
+    end
+  end
 
-        email ->
-          [{line, %{"email" => email, "name" => nil, "company" => nil, "locale" => nil}} | acc]
-      end
-    end)
-    |> Enum.reverse()
+  defp text_row({raw_line, line}, acc) do
+    case blank_to_nil(raw_line) do
+      nil ->
+        acc
+
+      email ->
+        [{line, %{"email" => email, "name" => nil, "company" => nil, "locale" => nil}} | acc]
+    end
   end
 
   defp strip_bom(<<0xEF, 0xBB, 0xBF, rest::binary>>), do: rest
@@ -271,7 +308,7 @@ defmodule PhoenixKitCRM.Lists.Import do
         import_row(attrs, email, list, opts, members_by_email)
       end)
 
-    report
+    finalize_report(report)
   end
 
   defp process_all(parsed_rows, list, resolver),
@@ -400,9 +437,9 @@ defmodule PhoenixKitCRM.Lists.Import do
   end
 
   defp apply_result(report, line, email, {:error, %Ecto.Changeset{} = changeset}, _list) do
-    Logger.warning(
-      "[CRM] Import row #{line} (#{inspect(email)}) rejected: #{inspect(changeset.errors)}"
-    )
+    # No email in the log line — rejected-row emails are PII; the line
+    # number is enough to find the row in the source file.
+    Logger.warning("[CRM] Import row #{line} rejected: #{inspect(changeset.errors)}")
 
     skip(report, line, email, :invalid_email)
   end
@@ -413,11 +450,14 @@ defmodule PhoenixKitCRM.Lists.Import do
     |> add_row(line, email, :skipped, reason)
   end
 
+  # Prepends (newest-first) — appending would copy the whole accumulator
+  # per row, which is O(n²) on a file near the upload size limit. Order is
+  # restored by finalize_report/1 when the run/preview completes.
   defp add_row(report, line, email, outcome, reason) do
     Map.update!(
       report,
       :rows,
-      &(&1 ++ [%{line: line, email: email, outcome: outcome, reason: reason}])
+      &[%{line: line, email: email, outcome: outcome, reason: reason} | &1]
     )
   end
 end

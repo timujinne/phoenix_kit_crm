@@ -18,12 +18,17 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   @max_file_size 5_000_000
   @chunk_size 200
   @preview_limit 20
+  # Cap on rendered skipped-row detail per bucket in the :done phase — a
+  # duplicate-heavy re-import can skip hundreds of thousands of rows, and
+  # rendering all of them would hang the browser.
+  @row_detail_limit 50
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:preview_limit, @preview_limit)
+     |> assign(:row_detail_limit, @row_detail_limit)
      |> allow_upload(:file,
        accept: ~w(.csv .txt),
        max_entries: 1,
@@ -60,11 +65,37 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   # ── Input phase: paste or upload → preview ──────────────────────────
 
   @impl true
-  def handle_event("preview_paste", %{"paste" => %{"text" => text}}, socket) do
-    start_preview(socket, Import.parse_text_rows(text), gettext("pasted text"))
+  def handle_event(
+        "preview_paste",
+        %{"paste" => %{"text" => text}},
+        %{assigns: %{phase: :input}} = socket
+      ) do
+    cond do
+      # The upload path enforces @max_file_size; the paste path has no such
+      # client-side limit, so guard it here — an unbounded paste would be
+      # parsed and classified inside one blocking handle_event.
+      byte_size(text) > @max_file_size ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext("Pasted text is too large (max %{size})", size: max_size_label())
+         )}
+
+      not String.valid?(text) ->
+        {:noreply, put_flash(socket, :error, gettext("Input must be valid UTF-8 text"))}
+
+      true ->
+        start_preview(socket, Import.parse_text_rows(text), gettext("pasted text"))
+    end
   end
 
-  def handle_event("preview_upload", _params, socket) do
+  # Ignore preview/confirm events outside their phase — a forged or replayed
+  # event mid-:running must not flip the phase back or spawn a second chunk
+  # loop while queued :process_chunk messages are still writing.
+  def handle_event("preview_paste", _params, socket), do: {:noreply, socket}
+
+  def handle_event("preview_upload", _params, %{assigns: %{phase: :input}} = socket) do
     entries = socket.assigns.uploads.file.entries
 
     cond do
@@ -86,6 +117,8 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
     end
   end
 
+  def handle_event("preview_upload", _params, socket), do: {:noreply, socket}
+
   def handle_event("validate_upload", _params, socket), do: {:noreply, socket}
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -96,7 +129,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
 
   def handle_event("back_to_input", _params, socket), do: {:noreply, reset_to_input(socket)}
 
-  def handle_event("confirm_import", _params, socket) do
+  def handle_event("confirm_import", _params, %{assigns: %{phase: :preview}} = socket) do
     send(self(), :process_chunk)
 
     {:noreply,
@@ -107,6 +140,8 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
      |> assign(:accumulator, Import.new_accumulator())}
   end
 
+  def handle_event("confirm_import", _params, socket), do: {:noreply, socket}
+
   # ── Done phase ───────────────────────────────────────────────────────
 
   def handle_event("restart", _params, socket), do: {:noreply, reset_to_input(socket)}
@@ -116,7 +151,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   #    the process is never blocked on the whole file in one shot. ──────
 
   @impl true
-  def handle_info(:process_chunk, socket) do
+  def handle_info(:process_chunk, %{assigns: %{phase: :running}} = socket) do
     {chunk, rest} = Enum.split(socket.assigns.pending_rows, @chunk_size)
 
     new_acc =
@@ -137,12 +172,20 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
 
     if rest == [] do
       {report, _seen} = new_acc
-      {:noreply, socket |> assign(:phase, :done) |> assign(:final_report, report)}
+
+      {:noreply,
+       socket
+       |> assign(:phase, :done)
+       |> assign(:final_report, Import.finalize_report(report))}
     else
       send(self(), :process_chunk)
       {:noreply, socket}
     end
   end
+
+  # A stray/queued :process_chunk outside :running (e.g. a message in flight
+  # when the phase moved on) is a no-op, not a crash on a nil accumulator.
+  def handle_info(:process_chunk, socket), do: {:noreply, socket}
 
   # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -151,7 +194,19 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
            {:ok, {File.read!(path), entry.client_name}}
          end) do
       [{content, filename}] ->
-        start_preview(socket, parse_by_extension(content, filename), filename)
+        # A Windows-1252/Latin-1 export (Excel's default in many locales)
+        # isn't valid UTF-8 — say so plainly instead of a generic
+        # "no rows found" after the parser rejects every byte.
+        if String.valid?(content) do
+          start_preview(socket, parse_by_extension(content, filename), filename)
+        else
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("That file isn't valid UTF-8 text — re-export it as UTF-8 CSV/TXT")
+           )}
+        end
 
       [] ->
         {:noreply, put_flash(socket, :error, gettext("Choose a file first"))}
@@ -193,6 +248,14 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
     |> assign(:final_report, nil)
   end
 
+  defp bucket_rows(rows, reason) do
+    rows
+    |> Enum.filter(&(&1.reason == reason))
+    |> Enum.take(@row_detail_limit)
+  end
+
+  defp max_size_label, do: "#{div(@max_file_size, 1_000_000)} MB"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -230,7 +293,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
             <p class="text-sm text-base-content/60">
               {gettext(
                 "CSV (with an email column) or a plain text file, one email per line. Max %{size}.",
-                size: "5 MB"
+                size: max_size_label()
               )}
             </p>
 
@@ -288,7 +351,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
           </span>
         </div>
 
-        {report_stats(@preview_report)}
+        {report_stats(%{report: @preview_report, created_label: gettext("Would import")})}
 
         <.table_default id="crm-import-preview-table" size="sm">
           <.table_default_header>
@@ -357,7 +420,7 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
           </span>
         </div>
 
-        {report_stats(@final_report)}
+        {report_stats(%{report: @final_report, created_label: gettext("Imported")})}
 
         <div
           :for={{reason, count} <- nonzero_skip_buckets(@final_report)}
@@ -367,10 +430,13 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
           <div class="collapse-title font-medium">{skip_reason_label(reason)} ({count})</div>
           <div class="collapse-content">
             <ul class="text-sm flex flex-col gap-1">
-              <li :for={row <- Enum.filter(@final_report.rows, &(&1.reason == reason))}>
+              <li :for={row <- bucket_rows(@final_report.rows, reason)}>
                 {gettext("Line %{line}: %{email}", line: row.line, email: row.email || "—")}
               </li>
             </ul>
+            <p :if={count > @row_detail_limit} class="text-sm text-base-content/60 mt-1">
+              {gettext("…and %{n} more", n: count - @row_detail_limit)}
+            </p>
           </div>
         </div>
 
@@ -388,14 +454,13 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   end
 
   attr(:report, :map, required: true)
+  attr(:created_label, :string, required: true)
 
-  defp report_stats(report) do
-    assigns = %{report: report}
-
+  defp report_stats(assigns) do
     ~H"""
     <div class="stats stats-vertical sm:stats-horizontal shadow overflow-x-auto">
       <div class="stat">
-        <div class="stat-title">{gettext("Would import")}</div>
+        <div class="stat-title">{@created_label}</div>
         <div class="stat-value text-success text-2xl">{@report.created}</div>
       </div>
       <div class="stat">
@@ -460,7 +525,9 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
     upload_errors(upload_config) ++ entry_errors
   end
 
-  defp upload_error_message(:too_large), do: gettext("File is too large (max 5 MB)")
+  defp upload_error_message(:too_large),
+    do: gettext("File is too large (max %{size})", size: max_size_label())
+
   defp upload_error_message(:too_many_files), do: gettext("Only one file at a time")
   defp upload_error_message(:not_accepted), do: gettext("Only .csv or .txt files are accepted")
   defp upload_error_message(_), do: gettext("Could not accept this file")

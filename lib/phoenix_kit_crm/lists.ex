@@ -381,7 +381,7 @@ defmodule PhoenixKitCRM.Lists do
   end
 
   # Atomic conditional-update pattern (same reasoning as reactivate_member/4
-  # below): the decision of "was this member subscribed" and the write
+  # above): the decision of "was this member subscribed" and the write
   # itself must be the SAME statement, or two concurrent removes of the
   # same member (two browser tabs) could both read "subscribed" before
   # either commits and both decrement the counter. The first update_all
@@ -597,19 +597,32 @@ defmodule PhoenixKitCRM.Lists do
   Contacts with an active (`"subscribed"`) membership on EVERY one of the
   given lists — the CRM comparison screen's cross-list overlap report.
   Requires at least 2 list uuids (an "overlap" of one list is just that
-  list's members, not a comparison).
+  list's members, not a comparison). Malformed uuids are dropped (returns
+  `[]` if fewer than 2 valid ones remain) and trashed contacts are excluded.
   """
   @spec list_overlap([UUIDv7.t() | String.t()]) :: [Contact.t()]
   def list_overlap(list_uuids) when is_list(list_uuids) and length(list_uuids) >= 2 do
-    wanted = list_uuids |> Enum.uniq() |> length()
+    # Drop malformed ids so one forged element can't raise an Ecto cast error
+    # (same reasoning as Contacts.list_by_uuids/1).
+    case list_uuids |> Enum.uniq() |> Enum.filter(&valid_uuid?/1) do
+      valid when length(valid) >= 2 ->
+        wanted = length(valid)
 
-    ListMember
-    |> where([m], m.list_uuid in ^list_uuids and m.status == "subscribed")
-    |> group_by([m], m.contact_uuid)
-    |> having([m], count(m.list_uuid, :distinct) == ^wanted)
-    |> select([m], m.contact_uuid)
-    |> repo().all()
-    |> Contacts.list_by_uuids()
+        ListMember
+        |> where([m], m.list_uuid in ^valid and m.status == "subscribed")
+        |> group_by([m], m.contact_uuid)
+        |> having([m], count(m.list_uuid, :distinct) == ^wanted)
+        |> select([m], m.contact_uuid)
+        |> repo().all()
+        |> Contacts.list_by_uuids()
+        # Trashing a contact leaves its memberships "subscribed"; don't
+        # surface trashed contacts in the overlap report (the sibling
+        # duplicate-email report excludes them too).
+        |> Enum.reject(&(&1.status == "trashed"))
+
+      _ ->
+        []
+    end
   end
 
   defp get_member(%ContactList{} = list, %Contact{} = contact) do
@@ -741,12 +754,18 @@ defmodule PhoenixKitCRM.Lists do
 
   defp maybe_search_members(query, opts) do
     case Keyword.get(opts, :search) do
-      term when is_binary(term) and term != "" ->
-        like = Search.like_pattern(term)
+      term when is_binary(term) ->
+        case String.trim(term) do
+          "" ->
+            query
 
-        query
-        |> join(:left, [m], c in Contact, on: c.uuid == m.contact_uuid)
-        |> where([m, c], ilike(m.email, ^like) or ilike(c.name, ^like))
+          trimmed ->
+            like = Search.like_pattern(trimmed)
+
+            query
+            |> join(:left, [m], c in Contact, on: c.uuid == m.contact_uuid)
+            |> where([m, c], ilike(m.email, ^like) or ilike(c.name, ^like))
+        end
 
       _ ->
         query
@@ -818,4 +837,6 @@ defmodule PhoenixKitCRM.Lists do
   defp locale_applied_payload(%ContactList{} = list, mode, count) do
     %{list_uuid: list.uuid, locale: list.locale, mode: mode, updated_count: count}
   end
+
+  defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 end
