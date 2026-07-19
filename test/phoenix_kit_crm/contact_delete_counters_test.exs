@@ -93,7 +93,7 @@ defmodule PhoenixKitCRM.ContactDeleteCountersTest do
       assert Lists.get_list!(list_b.uuid).subscriber_count == 0
     end
 
-    test "a failed delete rolls back the whole transaction, leaving counters exactly as they were" do
+    test "a failed delete rolls back the transaction (rollback hygiene; the pre-delete snapshot here is empty)" do
       contact = contact_fixture()
       list = list_fixture()
       {:ok, _} = Lists.add_contact_to_list(contact, list)
@@ -115,6 +115,21 @@ defmodule PhoenixKitCRM.ContactDeleteCountersTest do
       # The failed second call must not have left the counter in some new,
       # different-but-still-wrong state.
       assert Lists.get_list!(list.uuid).subscriber_count == 1
+    end
+
+    test "recount_list on a list whose row vanished returns :missing instead of raising" do
+      {:ok, list} =
+        Lists.create_list(%{
+          "name" => "Vanishing",
+          "slug" => "vanishing-#{System.unique_integer([:positive])}"
+        })
+
+      # Simulate the TOCTOU: the struct is loaded, but the row is gone by
+      # the time the recount's UPDATE runs — exactly what a concurrent
+      # list deletion inside delete_contact's window produces.
+      PhoenixKit.RepoHelper.repo().delete!(list)
+
+      assert :missing = Lists.recount_list(list)
     end
 
     test "a list gone by the time recount_by_uuid checks it doesn't crash the delete (nil branch)" do

@@ -456,17 +456,27 @@ defmodule PhoenixKitCRM.Lists do
     |> repo().preload(:contact)
   end
 
-  @doc "Recomputes and stores `subscriber_count` from the actual subscribed-member count. Repair function."
-  @spec recount_list(ContactList.t()) :: ContactList.t()
+  @doc """
+  Recomputes and stores `subscriber_count` from the actual subscribed-member
+  count. Repair function. Returns `:missing` when the list row no longer
+  exists by the time the write runs (deleted concurrently) — nothing left
+  to repair, and no `:list_recounted` event is broadcast.
+  """
+  @spec recount_list(ContactList.t()) :: ContactList.t() | :missing
   def recount_list(%ContactList{} = list) do
     count =
       ListMember
       |> where([m], m.list_uuid == ^list.uuid and m.status == "subscribed")
       |> repo().aggregate(:count, :uuid)
 
-    updated_list = set_counter(list, count)
-    PubSub.broadcast_list_event(:list_recounted, list_payload(updated_list))
-    updated_list
+    case set_counter(list, count) do
+      {:ok, updated_list} ->
+        PubSub.broadcast_list_event(:list_recounted, list_payload(updated_list))
+        updated_list
+
+      :missing ->
+        :missing
+    end
   end
 
   @doc """
@@ -656,13 +666,19 @@ defmodule PhoenixKitCRM.Lists do
     repo().get!(ContactList, uuid)
   end
 
+  # Branches on the matched-row count instead of asserting `{1, _}` (the
+  # idiom used for membership transitions above): a 0-row UPDATE means the
+  # list was deleted between the caller loading it and this statement — a
+  # real TOCTOU inside `Contacts.delete_contact/1`'s transaction, where
+  # rolling back a whole contact deletion over a moot counter would be
+  # wrong. Callers that want the old hard guarantee can match on `:missing`.
   defp set_counter(%ContactList{uuid: uuid}, count) do
-    {1, _} =
-      ContactList
-      |> where([l], l.uuid == ^uuid)
-      |> repo().update_all(set: [subscriber_count: count])
-
-    repo().get!(ContactList, uuid)
+    case ContactList
+         |> where([l], l.uuid == ^uuid)
+         |> repo().update_all(set: [subscriber_count: count]) do
+      {1, _} -> {:ok, repo().get!(ContactList, uuid)}
+      {0, _} -> :missing
+    end
   end
 
   # ── Contact-level opt-out / consent ──────────────────────────────────
