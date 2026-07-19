@@ -317,6 +317,61 @@ defmodule PhoenixKitCRM.ListsTest do
     end
   end
 
+  describe "members_by_email/3" do
+    test "returns an empty map for an empty email list, without querying" do
+      list = list_fixture()
+      assert Lists.members_by_email(list, []) == %{}
+    end
+
+    test "looks up members by email, keyed by the downcased email" do
+      list = list_fixture()
+      contact = contact_fixture(%{"email" => "Mixed.Case@Example.com"})
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+
+      result = Lists.members_by_email(list, ["mixed.case@example.com", "unknown@example.com"])
+
+      assert %{"mixed.case@example.com" => %ListMember{uuid: uuid}} = result
+      assert uuid == member.uuid
+      refute Map.has_key?(result, "unknown@example.com")
+    end
+
+    test "chunk_size splits the query into multiple round trips and merges every result" do
+      list = list_fixture()
+
+      members =
+        for _ <- 1..5 do
+          contact = contact_fixture()
+          {:ok, member} = Lists.add_contact_to_list(contact, list)
+          member
+        end
+
+      emails = Enum.map(members, & &1.email)
+
+      # chunk_size: 2 forces 3 chunked queries (2 + 2 + 1) for 5 emails —
+      # proves chunking doesn't drop or duplicate results across the
+      # boundary, not just that the default works for a handful of emails.
+      result = Lists.members_by_email(list, emails, 2)
+
+      assert map_size(result) == 5
+
+      for member <- members do
+        assert %{uuid: uuid} = Map.fetch!(result, String.downcase(member.email))
+        assert uuid == member.uuid
+      end
+    end
+
+    test "a chunk_size larger than the email count still returns every match (single chunk)" do
+      list = list_fixture()
+      contact = contact_fixture()
+      {:ok, member} = Lists.add_contact_to_list(contact, list)
+
+      result = Lists.members_by_email(list, [contact.email], 10_000)
+
+      assert %{uuid: uuid} = Map.fetch!(result, String.downcase(contact.email))
+      assert uuid == member.uuid
+    end
+  end
+
   describe "subscribed?/2 and remove_from_list/2,3" do
     test "subscribed? flips to false after remove, membership row stays" do
       contact = contact_fixture()
@@ -746,6 +801,36 @@ defmodule PhoenixKitCRM.ListsTest do
       list_uuid = list.uuid
 
       assert_receive {:crm, :list_created, %{list_uuid: ^list_uuid}}, 1000
+    end
+
+    test "apply_locale_to_members broadcasts :list_locale_applied when it updates something" do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => nil})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+      list_uuid = list.uuid
+
+      PubSub.subscribe(PubSub.topic_lists())
+      assert {:ok, 1} = Lists.apply_locale_to_members(list, :missing_only)
+
+      assert_receive {:crm, :list_locale_applied,
+                      %{
+                        list_uuid: ^list_uuid,
+                        locale: "en",
+                        mode: :missing_only,
+                        updated_count: 1
+                      }},
+                     1000
+    end
+
+    test "apply_locale_to_members does not broadcast when nothing was updated" do
+      list = list_fixture(%{"locale" => "en"})
+      contact = contact_fixture(%{"locale" => "en"})
+      {:ok, _} = Lists.add_contact_to_list(contact, list)
+
+      PubSub.subscribe(PubSub.topic_lists())
+      assert {:ok, 0} = Lists.apply_locale_to_members(list, :missing_only)
+
+      refute_receive {:crm, :list_locale_applied, _}, 200
     end
   end
 end

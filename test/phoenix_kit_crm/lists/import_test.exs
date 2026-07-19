@@ -260,19 +260,48 @@ defmodule PhoenixKitCRM.Lists.ImportTest do
       assert Repo.aggregate(Contact, :count, :uuid) == contact_count_before
     end
 
-    test "does not create an orphan contact when the membership insert is rolled back" do
+    test "does not create an orphan contact on a re-import" do
       list = list_fixture()
       csv = "email,name\ndup@example.com,First\n"
       Import.import_csv(csv, list)
 
       count_before = Repo.aggregate(Contact, :count, :uuid)
 
-      # Re-import: the contact insert succeeds inside the transaction, but
-      # the membership insert then violates idx_crm_list_members_list_email
-      # and must roll the whole transaction — including the contact — back.
+      # Re-import: the batched members_by_email pre-check (see the query-cost
+      # test below) now classifies this row as a KNOWN collision and skips it
+      # before any write is attempted — no contact insert, so nothing to roll
+      # back. A genuinely unknown-to-the-batch-lookup race would still hit
+      # the transactional path and roll back on the same
+      # idx_crm_list_members_list_email violation; either way, no orphan.
       Import.import_csv(csv, list)
 
       assert Repo.aggregate(Contact, :count, :uuid) == count_before
+    end
+
+    test "runs a bounded, constant number of queries on a re-import, not one write attempt per row" do
+      list = list_fixture()
+
+      csv =
+        "email,name\n" <>
+          Enum.map_join(1..300, "\n", fn n -> "dup#{n}@example.com,Dup #{n}" end)
+
+      first = Import.import_csv(csv, list)
+      assert first.created == 300
+
+      # Before the batched pre-check, every one of these 300 rows would have
+      # attempted its own contact INSERT inside a transaction, only to hit
+      # idx_crm_list_members_list_email and roll back — 300 write attempts
+      # for a file that changes nothing. The batched members_by_email lookup
+      # now classifies all of them from ONE query, so the query count stays
+      # flat regardless of row count.
+      query_count =
+        count_repo_queries(fn ->
+          second = Import.import_csv(csv, list)
+          assert second.created == 0
+          assert second.skipped.already_in_list == 300
+        end)
+
+      assert query_count <= 3
     end
   end
 

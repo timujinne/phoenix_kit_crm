@@ -21,7 +21,14 @@ defmodule PhoenixKitCRM.Lists.Import do
       instead of `created`/`added` (`:already_in_list` if the existing
       membership is still active, `:unsubscribed` if a prior membership was
       removed but still holds the email slot per the DB's partial unique
-      index — see `ListMember`'s moduledoc).
+      index — see `ListMember`'s moduledoc). A KNOWN collision is
+      classified straight from a batched `Lists.members_by_email/3` lookup
+      (one per chunk — see `run_chunk/4`) and never reaches the write
+      transaction at all, so re-importing a large duplicate file doesn't
+      pay an INSERT-then-rollback per colliding row; only an email the
+      batched lookup didn't already know about goes through it, where a
+      race against a concurrent import is still caught by the DB's own
+      unique index.
 
   ## Row pipeline
 
@@ -29,8 +36,11 @@ defmodule PhoenixKitCRM.Lists.Import do
   `email` column's citext case-insensitivity) → in-file dedup prefilter
   (`:duplicate_in_file` — a second row with the same email, e.g. a shared
   mailbox listed under two names, never reaches the DB) → email format
-  check (`:invalid_email`) → the one write transaction, classifying any
-  `idx_crm_list_members_list_email` violation by looking up the existing
+  check (`:invalid_email`) → the batched `members_by_email` lookup (a KNOWN
+  collision short-circuits straight to `:already_in_list`/`:unsubscribed`,
+  no write attempted) → the write transaction for anything left, which
+  still classifies an `idx_crm_list_members_list_email` violation (a race
+  the batched lookup couldn't have seen) by looking up the existing
   holder's status.
 
   `name` is CSV-optional per the spec; a blank name falls back to the email
@@ -165,10 +175,12 @@ defmodule PhoenixKitCRM.Lists.Import do
           {ImportReport.t(), MapSet.t()}
         ) :: {ImportReport.t(), MapSet.t()}
   def run_chunk(rows_chunk, %ContactList{} = list, opts, {%ImportReport{}, %MapSet{}} = acc) do
+    members_by_email = Lists.members_by_email(list, distinct_emails(rows_chunk))
+
     process_all(
       rows_chunk,
       list,
-      fn attrs, email -> import_row(attrs, email, list, opts) end,
+      fn attrs, email -> import_row(attrs, email, list, opts, members_by_email) end,
       acc
     )
   end
@@ -252,8 +264,12 @@ defmodule PhoenixKitCRM.Lists.Import do
   # and what the real run does.
 
   defp run(parsed_rows, %ContactList{} = list, opts) do
+    members_by_email = Lists.members_by_email(list, distinct_emails(parsed_rows))
+
     {report, _seen} =
-      process_all(parsed_rows, list, fn attrs, email -> import_row(attrs, email, list, opts) end)
+      process_all(parsed_rows, list, fn attrs, email ->
+        import_row(attrs, email, list, opts, members_by_email)
+      end)
 
     report
   end
@@ -291,7 +307,26 @@ defmodule PhoenixKitCRM.Lists.Import do
 
   defp normalize_email(email), do: email |> String.trim() |> String.downcase()
 
-  defp import_row(attrs, email, list, opts) do
+  # Checks the chunk's pre-fetched members_by_email map before ever
+  # attempting a write: a KNOWN collision (already imported, or a prior
+  # membership still holding the email slot) is classified straight from
+  # the map, matching preview_row/2's return shape exactly — apply_result/5
+  # already has clauses for both. Re-importing a large duplicate file used
+  # to pay a contact INSERT + transaction rollback for every single
+  # colliding row; this reuses the same batched lookup preview_rows/2 uses
+  # to skip the write outright for anything the map already knows about.
+  # Only a genuinely unknown email reaches do_import_row/4's transactional
+  # insert — a race against a concurrent import between the batched lookup
+  # and the insert is still caught there by the DB's own unique index.
+  defp import_row(attrs, email, list, opts, members_by_email) do
+    case Map.get(members_by_email, email) do
+      %{status: "removed"} -> {:error, :unsubscribed}
+      %{} -> {:error, :already_in_list}
+      nil -> do_import_row(attrs, email, list, opts)
+    end
+  end
+
+  defp do_import_row(attrs, email, list, opts) do
     contact_attrs = %{
       "name" => attrs["name"] || email,
       "email" => email,

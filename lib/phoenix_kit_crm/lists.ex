@@ -37,6 +37,9 @@ defmodule PhoenixKitCRM.Lists do
   alias PhoenixKitCRM.Schemas.{Contact, ContactList, ListMember}
   alias PhoenixKitCRM.Search
 
+  # See members_by_email/3's doc for why this exists.
+  @members_by_email_chunk_size 10_000
+
   defp repo, do: RepoHelper.repo()
 
   # ── Lists CRUD ──────────────────────────────────────────────────────
@@ -308,15 +311,37 @@ defmodule PhoenixKitCRM.Lists do
   but the *stored* `email` column value keeps whatever case it was written
   in, so a raw `Map.new(&{&1.email, &1})` could silently miss a lookup) —
   callers must downcase their own lookup key too.
-  """
-  @spec members_by_email(ContactList.t(), [String.t()]) :: %{String.t() => ListMember.t()}
-  def members_by_email(_list, []), do: %{}
 
-  def members_by_email(%ContactList{} = list, emails) when is_list(emails) do
-    ListMember
-    |> where([m], m.list_uuid == ^list.uuid and m.email in ^emails)
-    |> repo().all()
-    |> Map.new(&{String.downcase(&1.email), &1})
+  `emails` is queried in chunks of `chunk_size` (default
+  #{@members_by_email_chunk_size}) rather than one `WHERE email IN (...)`
+  for the whole list: Ecto expands `field in ^list` into one bind
+  parameter PER element, and Postgres caps a single query at 65,535 bind
+  parameters — a file near the upload size limit (one address per line)
+  would blow past that in a single query and raise `Postgrex.Error`
+  instead of rendering the import preview. `chunk_size` is exposed so
+  tests can exercise the chunking/merge behavior without a multi-thousand
+  row fixture.
+  """
+  @spec members_by_email(ContactList.t(), [String.t()], pos_integer()) :: %{
+          String.t() => ListMember.t()
+        }
+  def members_by_email(list, emails, chunk_size \\ @members_by_email_chunk_size)
+
+  def members_by_email(_list, [], _chunk_size), do: %{}
+
+  def members_by_email(%ContactList{} = list, emails, chunk_size)
+      when is_list(emails) and is_integer(chunk_size) and chunk_size > 0 do
+    emails
+    |> Enum.chunk_every(chunk_size)
+    |> Enum.reduce(%{}, fn chunk, acc ->
+      chunk_members =
+        ListMember
+        |> where([m], m.list_uuid == ^list.uuid and m.email in ^chunk)
+        |> repo().all()
+        |> Map.new(&{String.downcase(&1.email), &1})
+
+      Map.merge(acc, chunk_members)
+    end)
   end
 
   @doc """
@@ -508,12 +533,18 @@ defmodule PhoenixKitCRM.Lists do
 
   Pass `:actor_uuid` in `opts` for the activity log entry (logged once per
   call, with the affected count in `metadata` — not once per contact, same
-  as the list-level mutations in this module).
+  as the list-level mutations in this module). Also broadcasts a single
+  `:list_locale_applied` event over `crm:lists` (payload:
+  `%{list_uuid:, locale:, mode:, updated_count:}`) when `updated_count > 0`
+  — this bulk mutation used to be the only one in this context that didn't,
+  unlike every other list/membership write here (see the module doc).
 
   Returns `{:ok, updated_count}` (`0` is a valid, non-error result — e.g.
-  `:missing_only` against a list where every member already has a locale),
-  or `{:error, :no_locale}` if the list itself has no locale (defensive;
-  the UI should already gate the triggering action on this).
+  `:missing_only` against a list where every member already has a locale;
+  no event fires in that case either, mirroring the activity log's own
+  `count > 0` guard), or `{:error, :no_locale}` if the list itself has no
+  locale (defensive; the UI should already gate the triggering action on
+  this).
   """
   @spec apply_locale_to_members(ContactList.t(), :all | :missing_only, keyword()) ::
           {:ok, non_neg_integer()} | {:error, :no_locale}
@@ -550,6 +581,8 @@ defmodule PhoenixKitCRM.Lists do
           "updated_count" => count
         }
       )
+
+      PubSub.broadcast_list_event(:list_locale_applied, locale_applied_payload(list, mode, count))
     end
 
     {:ok, count}
@@ -780,5 +813,9 @@ defmodule PhoenixKitCRM.Lists do
       subscriber_count: list.subscriber_count,
       status: member.status
     }
+  end
+
+  defp locale_applied_payload(%ContactList{} = list, mode, count) do
+    %{list_uuid: list.uuid, locale: list.locale, mode: mode, updated_count: count}
   end
 end
