@@ -74,17 +74,6 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <h1 class="text-2xl font-bold flex items-center gap-2">
-          <.icon name="hero-building-office-2" class="w-6 h-6" /> {gettext("Organizations")}
-        </h1>
-        <span class="text-sm text-base-content/60">
-          {ngettext("%{count} organization", "%{count} organizations", length(@users),
-            count: length(@users)
-          )}
-        </span>
-      </div>
-
       <TableDefault.table_default
         id="crm-organizations-table"
         toggleable
@@ -92,6 +81,13 @@ defmodule PhoenixKitCRM.Web.OrganizationsView do
         card_title={fn u -> card_title_link(u) end}
         card_fields={fn u -> Enum.map(@selected_columns, &card_field(@column_meta, &1, u)) end}
       >
+        <:toolbar_title>
+          <span class="text-sm text-base-content/60">
+            {ngettext("%{count} organization", "%{count} organizations", length(@users),
+              count: length(@users)
+            )}
+          </span>
+        </:toolbar_title>
         <:toolbar_actions>
           <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
             <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> {gettext("Columns")}

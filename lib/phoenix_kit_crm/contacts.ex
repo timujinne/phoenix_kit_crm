@@ -18,6 +18,7 @@ defmodule PhoenixKitCRM.Contacts do
   alias PhoenixKit.Users.Auth
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitCRM.Schemas.{CompanyMembership, Contact}
+  alias PhoenixKitCRM.Search
   alias PhoenixKitCRM.SoftDelete
 
   defp repo, do: RepoHelper.repo()
@@ -29,12 +30,20 @@ defmodule PhoenixKitCRM.Contacts do
   @doc """
   Lists contacts. Excludes trashed by default; preloads the primary company
   membership (with company) and the linked user.
+
+  ## Options
+    * `:status` / `:include_trashed` — see `apply_status_scope/2`
+    * `:search` — name/email ILIKE match (case-insensitive)
+    * `:limit` / `:offset` — pagination; both no-ops when absent, so this
+      stays a full unpaginated list for any existing caller not passing them
   """
   @spec list_contacts(keyword()) :: [Contact.t()]
   def list_contacts(opts \\ []) do
     Contact
     |> apply_status_scope(opts)
+    |> maybe_search_contacts(opts)
     |> order_by([c], asc: c.name)
+    |> maybe_paginate(opts)
     |> repo().all()
     |> repo().preload(company_memberships: :company, user: [])
   end
@@ -51,11 +60,40 @@ defmodule PhoenixKitCRM.Contacts do
     end
   end
 
+  @doc "Same filters as `list_contacts/1` (`:status`/`:include_trashed`/`:search`); ignores `:limit`/`:offset`."
   @spec count_contacts(keyword()) :: non_neg_integer()
   def count_contacts(opts \\ []) do
     Contact
     |> apply_status_scope(opts)
+    |> maybe_search_contacts(opts)
     |> repo().aggregate(:count, :uuid)
+  end
+
+  @doc """
+  Groups non-trashed contacts sharing the same email (case-insensitive, via
+  the column's citext type), for the CRM comparison screen's directory-wide
+  duplicate-email report. Only emails held by 2+ contacts; blank/nil emails
+  are never a "duplicate" (many contacts legitimately have none). Ordered by
+  group size, largest first.
+  """
+  @spec list_duplicate_email_groups() :: [%{email: String.t(), count: pos_integer()}]
+  def list_duplicate_email_groups do
+    Contact
+    |> where([c], not is_nil(c.email) and c.email != "" and c.status != "trashed")
+    |> group_by([c], c.email)
+    |> having([c], count(c.uuid) > 1)
+    |> select([c], %{email: c.email, count: count(c.uuid)})
+    |> order_by([c], desc: count(c.uuid))
+    |> repo().all()
+  end
+
+  @doc "Non-trashed contacts holding exactly this email — the drill-down for a `list_duplicate_email_groups/0` row."
+  @spec list_by_email(String.t()) :: [Contact.t()]
+  def list_by_email(email) when is_binary(email) do
+    Contact
+    |> where([c], c.email == ^email and c.status != "trashed")
+    |> order_by([c], asc: c.inserted_at)
+    |> repo().all()
   end
 
   @spec get_contact(UUIDv7.t() | String.t() | nil) :: Contact.t() | nil
@@ -146,7 +184,7 @@ defmodule PhoenixKitCRM.Contacts do
     if q == "" do
       []
     else
-      like = like_pattern(q)
+      like = Search.like_pattern(q)
 
       Contact
       |> where([c], c.status != "trashed")
@@ -160,19 +198,6 @@ defmodule PhoenixKitCRM.Contacts do
 
   defp maybe_exclude_uuids(query, []), do: query
   defp maybe_exclude_uuids(query, uuids), do: where(query, [c], c.uuid not in ^uuids)
-
-  # Wrap a trimmed search term in `%…%`, escaping the LIKE/ILIKE metacharacters
-  # (`\`, `%`, `_`) so a literal `%` matches a percent sign rather than acting as
-  # a wildcard. Postgres ILIKE uses backslash as the default escape character.
-  defp like_pattern(q) do
-    escaped =
-      q
-      |> String.replace("\\", "\\\\")
-      |> String.replace("%", "\\%")
-      |> String.replace("_", "\\_")
-
-    "%#{escaped}%"
-  end
 
   # ── Company membership (v1: a single primary company per contact) ───
 
@@ -300,6 +325,29 @@ defmodule PhoenixKitCRM.Contacts do
       true -> where(query, [c], c.status != "trashed")
     end
   end
+
+  defp maybe_search_contacts(query, opts) do
+    case Keyword.get(opts, :search) do
+      term when is_binary(term) and term != "" ->
+        like = Search.like_pattern(term)
+        where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
+
+      _ ->
+        query
+    end
+  end
+
+  defp maybe_paginate(query, opts) do
+    query
+    |> maybe_limit(Keyword.get(opts, :limit))
+    |> maybe_offset(Keyword.get(opts, :offset))
+  end
+
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, limit), do: limit(query, ^limit)
+
+  defp maybe_offset(query, nil), do: query
+  defp maybe_offset(query, offset), do: offset(query, ^offset)
 
   defp valid_uuid?(uuid), do: match?({:ok, _}, Ecto.UUID.cast(uuid))
 end

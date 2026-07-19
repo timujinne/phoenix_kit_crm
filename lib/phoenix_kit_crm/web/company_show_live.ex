@@ -49,6 +49,8 @@ defmodule PhoenixKitCRM.Web.CompanyShowLive do
          |> assign(:avatar_url, Attachments.avatar_url(company))
          |> assign(:tz_offset, tz_offset(socket.assigns[:phoenix_kit_current_user]))
          |> assign(:page_title, Company.display_name(company))
+         |> assign(:page_section, gettext("Companies"))
+         |> assign(:page_section_path, Paths.companies())
          |> assign(:memberships, Companies.list_memberships(company.uuid))}
     end
   end

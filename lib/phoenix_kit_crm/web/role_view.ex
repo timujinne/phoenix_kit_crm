@@ -111,13 +111,6 @@ defmodule PhoenixKitCRM.Web.RoleView do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col mx-auto max-w-6xl px-4 py-6 gap-6">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <h1 class="text-2xl font-bold">{@page_title}</h1>
-        <span class="text-sm text-base-content/60">
-          {ngettext("%{count} user", "%{count} users", length(@users), count: length(@users))}
-        </span>
-      </div>
-
       <TableDefault.table_default
         id="crm-role-users-table"
         toggleable
@@ -125,6 +118,11 @@ defmodule PhoenixKitCRM.Web.RoleView do
         card_title={fn u -> card_title_link(u) end}
         card_fields={fn u -> Enum.map(@selected_columns, &card_field(@column_meta, &1, u)) end}
       >
+        <:toolbar_title>
+          <span class="text-sm text-base-content/60">
+            {ngettext("%{count} user", "%{count} users", length(@users), count: length(@users))}
+          </span>
+        </:toolbar_title>
         <:toolbar_actions>
           <button class="btn btn-outline btn-sm" phx-click="show_column_modal">
             <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> {gettext("Columns")}

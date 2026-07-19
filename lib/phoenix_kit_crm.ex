@@ -112,10 +112,23 @@ defmodule PhoenixKitCRM do
         gettext_backend: PhoenixKitCRM.Gettext
       ),
       Tab.new!(
+        id: :admin_crm_lists,
+        label: "Lists",
+        icon: "hero-envelope",
+        path: "/admin/crm/lists",
+        priority: 654,
+        level: :admin,
+        permission: module_key(),
+        match: :prefix,
+        parent: :admin_crm,
+        live_view: {PhoenixKitCRM.Web.ListsLive, :index},
+        gettext_backend: PhoenixKitCRM.Gettext
+      ),
+      Tab.new!(
         id: :admin_crm_organizations,
         label: "Organizations",
         path: "/admin/crm/organizations",
-        priority: 654,
+        priority: 655,
         level: :admin,
         permission: module_key(),
         match: :prefix,

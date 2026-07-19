@@ -16,6 +16,7 @@ defmodule PhoenixKitCRM.PartyRoles do
   alias PhoenixKit.RepoHelper
   alias PhoenixKitCRM.Activity
   alias PhoenixKitCRM.Schemas.{Company, Contact, PartyRole}
+  alias PhoenixKitCRM.Search
 
   defp repo, do: RepoHelper.repo()
 
@@ -149,6 +150,8 @@ defmodule PhoenixKitCRM.PartyRoles do
   ## Options
     * `:include_inactive` — include revoked role rows too
     * `:include_trashed` — include trashed companies too
+    * `:search` — name/email ILIKE match
+    * `:limit` / `:offset` — pagination; no-ops when absent
   """
   @spec list_companies_with_role(String.t(), keyword()) :: [Company.t()]
   def list_companies_with_role(role, opts \\ []) do
@@ -157,8 +160,22 @@ defmodule PhoenixKitCRM.PartyRoles do
     Company
     |> where([c], c.uuid in ^uuids)
     |> maybe_exclude_trashed(opts)
+    |> maybe_search_roleable(opts)
     |> order_by([c], asc: c.name)
+    |> maybe_paginate(opts)
     |> repo().all()
+  end
+
+  @doc "Same filters as `list_companies_with_role/2`, minus `:limit`/`:offset`."
+  @spec count_companies_with_role(String.t(), keyword()) :: non_neg_integer()
+  def count_companies_with_role(role, opts \\ []) do
+    uuids = roleable_uuids("company", role, opts)
+
+    Company
+    |> where([c], c.uuid in ^uuids)
+    |> maybe_exclude_trashed(opts)
+    |> maybe_search_roleable(opts)
+    |> repo().aggregate(:count, :uuid)
   end
 
   @doc "Contacts holding an active `role`, name ascending. Same options as `list_companies_with_role/2`."
@@ -169,8 +186,22 @@ defmodule PhoenixKitCRM.PartyRoles do
     Contact
     |> where([c], c.uuid in ^uuids)
     |> maybe_exclude_trashed(opts)
+    |> maybe_search_roleable(opts)
     |> order_by([c], asc: c.name)
+    |> maybe_paginate(opts)
     |> repo().all()
+  end
+
+  @doc "Same filters as `list_contacts_with_role/2`, minus `:limit`/`:offset`."
+  @spec count_contacts_with_role(String.t(), keyword()) :: non_neg_integer()
+  def count_contacts_with_role(role, opts \\ []) do
+    uuids = roleable_uuids("contact", role, opts)
+
+    Contact
+    |> where([c], c.uuid in ^uuids)
+    |> maybe_exclude_trashed(opts)
+    |> maybe_search_roleable(opts)
+    |> repo().aggregate(:count, :uuid)
   end
 
   @doc """
@@ -211,6 +242,31 @@ defmodule PhoenixKitCRM.PartyRoles do
       do: query,
       else: where(query, [c], c.status != "trashed")
   end
+
+  # Same `name`/`email` shape on both Company and Contact, so one clause
+  # covers `list_companies_with_role/2` and `list_contacts_with_role/2`.
+  defp maybe_search_roleable(query, opts) do
+    case Keyword.get(opts, :search) do
+      term when is_binary(term) and term != "" ->
+        like = Search.like_pattern(term)
+        where(query, [c], ilike(c.name, ^like) or ilike(c.email, ^like))
+
+      _ ->
+        query
+    end
+  end
+
+  defp maybe_paginate(query, opts) do
+    query
+    |> maybe_limit(Keyword.get(opts, :limit))
+    |> maybe_offset(Keyword.get(opts, :offset))
+  end
+
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, limit), do: limit(query, ^limit)
+
+  defp maybe_offset(query, nil), do: query
+  defp maybe_offset(query, offset), do: offset(query, ^offset)
 
   @doc """
   Resolver entry point for the (future) Catalogue supplier facade: given a
