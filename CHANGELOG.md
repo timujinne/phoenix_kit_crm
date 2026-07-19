@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-07-19
+
+### Fixed
+
+- **`Contacts.delete_contact/1`** permanently overcounted a list's
+  `subscriber_count` — the FK cascade on `phoenix_kit_crm_list_members`
+  removes membership rows at the DB level when a contact is hard-deleted,
+  bypassing `Lists.remove_from_list/2`'s atomic counter decrement (that
+  path only fires on a live status flip). Deleting a contact still
+  `"subscribed"` on a list left the count permanently stuck one too high.
+  `delete_contact/1` now snapshots the contact's subscribed lists and
+  recounts each one (`Lists.recount_list/1`) in the same transaction as
+  the delete (PR #14).
+
 ## [0.3.0] - 2026-07-19
 
 Stage 3 of the restructuring plan (PR #13): CRM contact lists, a CSV/text

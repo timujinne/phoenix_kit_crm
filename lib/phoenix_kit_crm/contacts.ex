@@ -186,17 +186,25 @@ defmodule PhoenixKitCRM.Contacts do
   `Lists.recount_list/1`, the same repair function used for the
   Settings-page "Recount" action — in the same transaction as the
   delete itself.
+
+  The snapshot query runs *inside* the transaction, immediately before the
+  delete, rather than before `repo().transaction/1` is even called — doing
+  it outside would leave a window between the snapshot and the delete where
+  a concurrent `add_contact_to_list/3` could subscribe the contact to a new
+  list that the snapshot never saw, permanently stranding that list's
+  counter one over (the exact bug this function exists to fix, just via a
+  different door).
   """
   @spec delete_contact(Contact.t()) :: {:ok, Contact.t()} | {:error, Ecto.Changeset.t()}
   def delete_contact(%Contact{} = contact) do
-    affected_list_uuids =
-      ListMember
-      |> where([m], m.contact_uuid == ^contact.uuid and m.status == "subscribed")
-      |> select([m], m.list_uuid)
-      |> repo().all()
-      |> Enum.uniq()
-
     repo().transaction(fn ->
+      affected_list_uuids =
+        ListMember
+        |> where([m], m.contact_uuid == ^contact.uuid and m.status == "subscribed")
+        |> select([m], m.list_uuid)
+        |> repo().all()
+        |> Enum.uniq()
+
       case repo().delete(contact) do
         {:ok, deleted} ->
           Enum.each(affected_list_uuids, &recount_by_uuid/1)
