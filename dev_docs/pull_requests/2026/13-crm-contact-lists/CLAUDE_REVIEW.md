@@ -14,6 +14,11 @@
   import collisions before the write transaction, and added the missing
   `list_locale_applied` broadcast) — this is a post-merge review of the final
   merged state, plus the `a2cb6b4` "lib upgrades" commit on top.
+- **Findings:** 1 BUG-HIGH (dependency floor below the version that ships a
+  migration this PR hard-requires), 1 IMPROVEMENT-HIGH and 1
+  IMPROVEMENT-MEDIUM (both "no DB queries in `mount/3`" Iron Law violations,
+  inconsistent with the sibling LiveViews in this same PR that get it
+  right), 2 NITPICKs. All fixed below.
 - **Reviewer:** Claude (Sonnet 5), post-merge.
 - **Method:** Phoenix + Ecto lenses (`elixir:phoenix-thinking`,
   `elixir:ecto-thinking`), invoked before reading any code. Read every new
@@ -28,6 +33,35 @@
   Law systematically across all five new LiveViews, since three of them
   diverge from the pattern the other two (and every pre-existing LiveView in
   this module) already follow correctly.
+
+---
+
+## BUG - HIGH
+
+**The `phoenix_kit` dependency floor (`>= 1.7.197`) is below the version that actually shipped this PR's required core migration — installing at the stated floor would crash with "relation does not exist".**
+
+`mix.exs`'s own comment on the `pk_dep(:phoenix_kit, ...)` line said core
+migration V152 (`phoenix_kit_crm_lists`/`phoenix_kit_crm_list_members` DDL,
+required by every `PhoenixKitCRM.Lists` function this PR ships) was "not yet
+published to Hex as of 2026-07-17", and left the floor at the pre-existing
+`>= 1.7.197` since it "can't name it yet". That's now stale: checked core's
+own `CHANGELOG.md` and confirmed via `git tag --contains` on the commit that
+introduced `v152.ex`'s CRM-lists section — V152 (including the CRM lists
+DDL) first shipped in the **1.7.203** tag, not 1.7.197. Every version between
+1.7.197 and 1.7.202 inclusive satisfies the stated `mix.exs` constraint but
+lacks the tables `PhoenixKitCRM.Lists` unconditionally queries — a real
+install following this package's own stated floor would compile and boot
+fine, then crash the first time any Lists/Comparison page loads (`ERROR:
+relation "phoenix_kit_crm_lists" does not exist`), not caught by
+`mix compile` or by this repo's own gate, since none of it runs against a
+`phoenix_kit` build below what's actually vendored locally.
+
+**Fix applied:** bumped the floor to `pk_dep(:phoenix_kit, "~> 1.7 and >=
+1.7.203")` and rewrote the now-stale comment. Caught during the release
+step of this review (checking the version floor against Hex before
+publishing) rather than during the initial code read — worth remembering
+for future PRs that add a new floor comment promising "bump this once X
+ships": the promise is easy to leave unfulfilled once X actually ships.
 
 ---
 

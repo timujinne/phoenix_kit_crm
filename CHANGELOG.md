@@ -4,6 +4,75 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-07-19
+
+Stage 3 of the restructuring plan (PR #13): CRM contact lists, a CSV/text
+account importer, per-list locale with bulk-apply, contact opt-out/consent,
+and a duplicate-email/list-overlap comparison screen. Requires
+`phoenix_kit >= 1.7.203` (the core migration shipping
+`phoenix_kit_crm_lists`/`phoenix_kit_crm_list_members` and the CRM broadcast
+source columns on newsletters).
+
+### Added
+
+- **`PhoenixKitCRM.Lists`** — named, sluggable contact lists
+  (`active`/`archived`), soft-deleted memberships (`subscribed` / `pending` /
+  `removed`, never hard-deleted), a maintained `subscriber_count` cache, and
+  contact-level opt-out/consent (`opted_out_at` + an append-only `consent`
+  log) that applies across every list a contact belongs to. Every
+  list/membership mutation broadcasts over `crm:lists` for live subscriber
+  counters and admin-UI refresh.
+- **`PhoenixKitCRM.Lists.Import`** — CSV (header row, `email`/`name`/
+  `company`/`locale` columns) and plaintext (one email per line) import,
+  with a no-write dry-run preview and a chunked real run (200 rows/message)
+  so a large file doesn't block the LiveView process. Classifies every row
+  (`imported` / `already_in_list` / `unsubscribed` / `duplicate_in_file` /
+  `no_email` / `invalid_email`); idempotent re-import creates zero duplicate
+  contacts.
+- **Per-list locale + bulk-apply**: a list can carry a content-language tag,
+  bulk-applied to its subscribed members' contacts in `:missing_only`
+  (default) or `:all` (overwrite) mode, with a preview of how many contacts
+  each mode would touch before confirming.
+- **Comparison screen** (`/admin/crm/comparison`): directory-wide duplicate
+  emails (expandable to the actual contacts) and cross-list overlap (2+
+  lists → contacts subscribed to all of them). Read-only — no merge/remove
+  actions.
+- Search + pagination on the existing Contacts, Companies, and
+  `PartyRoles.list_{companies,contacts}_with_role` listings (previously
+  unpaginated, full-table).
+- `nimble_csv` dependency for CSV parsing (pure Elixir, already resolved
+  transitively via `phoenix_kit`).
+
+### Fixed
+
+- `ComparisonLive`, `ListMembersLive`, and `ListImportLive` queried the
+  database directly in `mount/3`, which Phoenix invokes twice per page visit
+  (disconnected HTTP render + connected LiveSocket mount) — doubling a
+  full-table duplicate-email aggregate scan on every comparison-page visit
+  and doubling a primary-key list lookup on the two per-list pages. Moved
+  into `handle_params/3`, matching the pattern this PR's own `ListFormLive`/
+  `ListsLive` (and the pre-existing `ContactShowLive`) already used
+  correctly.
+- `phoenix_kit` dependency floor was `>= 1.7.197`, below **1.7.203** — the
+  version that actually first shipped core migration V152
+  (`phoenix_kit_crm_lists`/`phoenix_kit_crm_list_members`). Installing this
+  package at its own previously-stated floor would compile and boot, then
+  crash the first time any Lists/Comparison page loaded
+  (`relation "phoenix_kit_crm_lists" does not exist`). Floor corrected to
+  `>= 1.7.203`.
+
+### Notes
+
+- Postgres was not available in this release's build environment;
+  `:integration` (DB/LiveView) tests auto-excluded per this repo's
+  documented stance — only unit tests ran (90 passed, 0 failures). The full
+  `ComparisonLiveTest`/`ListMembersLiveTest`/`ListImportLiveTest` suites
+  (which exercise the `mount/3` → `handle_params/3` fix above end-to-end)
+  are expected to run against a real core checkout before this reaches
+  production installs.
+- See `dev_docs/pull_requests/2026/13-crm-contact-lists/CLAUDE_REVIEW.md`
+  for the full post-merge review.
+
 ## [0.2.5] - 2026-07-17
 
 First release of the CRM v2 party-roles work (PRs #9-#12): companies and
