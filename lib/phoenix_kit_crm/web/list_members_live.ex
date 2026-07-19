@@ -22,51 +22,51 @@ defmodule PhoenixKitCRM.Web.ListMembersLive do
   @page_size 25
 
   @impl true
-  def mount(%{"uuid" => uuid}, _session, socket) do
+  def mount(_params, _session, socket) do
+    if connected?(socket), do: CRMPubSub.subscribe(CRMPubSub.topic_lists())
+
+    {:ok,
+     socket
+     |> assign(:members, [])
+     |> assign(:has_more?, false)
+     |> assign(:add_form, blank_add_form())
+     |> assign(:email_check, nil)
+     |> assign(:show_locale_modal, false)
+     |> assign(:locale_mode, "missing_only")
+     |> assign(:locale_preview, %{total: 0, missing_locale: 0, different_locale: 0})}
+  end
+
+  @impl true
+  def handle_params(%{"uuid" => uuid} = params, _uri, socket) do
     case Lists.get_list(uuid) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, gettext("List not found"))
          |> push_navigate(to: Paths.lists())}
 
       list ->
-        if connected?(socket), do: CRMPubSub.subscribe(CRMPubSub.topic_lists())
+        filter =
+          case params["status"] do
+            s when s in ~w(subscribed pending removed) -> s
+            _ -> nil
+          end
 
-        {:ok,
+        page = parse_page(params["page"])
+        search = params["search"] || ""
+
+        {:noreply,
          socket
          |> assign(:list, list)
          |> assign(:page_title, gettext("CRM — %{name}", name: list.name))
          |> assign(:page_subtitle, list_subtitle(list))
          |> assign(:page_section, gettext("Lists"))
          |> assign(:page_section_path, Paths.lists())
-         |> assign(:members, [])
-         |> assign(:has_more?, false)
-         |> assign(:add_form, blank_add_form())
-         |> assign(:email_check, nil)
-         |> assign(:show_locale_modal, false)
-         |> assign(:locale_mode, "missing_only")
-         |> assign(:locale_preview, %{total: 0, missing_locale: 0, different_locale: 0})}
+         |> assign(:filter, filter)
+         |> assign(:page, page)
+         |> assign(:search, search)
+         |> load_members()}
     end
-  end
-
-  @impl true
-  def handle_params(params, _uri, socket) do
-    filter =
-      case params["status"] do
-        s when s in ~w(subscribed pending removed) -> s
-        _ -> nil
-      end
-
-    page = parse_page(params["page"])
-    search = params["search"] || ""
-
-    {:noreply,
-     socket
-     |> assign(:filter, filter)
-     |> assign(:page, page)
-     |> assign(:search, search)
-     |> load_members()}
   end
 
   # ── Search / pagination ──────────────────────────────────────────────

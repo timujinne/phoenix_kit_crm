@@ -28,12 +28,18 @@ defmodule PhoenixKitCRM.Web.ComparisonLive do
      |> assign(:page_subtitle, gettext("Read-only reports — nothing here changes any data."))
      |> assign(:page_section, gettext("Lists"))
      |> assign(:page_section_path, Paths.lists())
-     |> assign(:duplicate_groups, Contacts.list_duplicate_email_groups())
      |> assign(:expanded_duplicates, MapSet.new())
      |> assign(:duplicate_contacts, %{})
-     |> assign(:lists, Lists.list_lists(status: "active"))
      |> assign(:selected_list_uuids, MapSet.new())
      |> assign(:overlap_contacts, nil)}
+  end
+
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(:duplicate_groups, Contacts.list_duplicate_email_groups())
+     |> assign(:lists, Lists.list_lists(status: "active"))}
   end
 
   @impl true

@@ -20,34 +20,40 @@ defmodule PhoenixKitCRM.Web.ListImportLive do
   @preview_limit 20
 
   @impl true
-  def mount(%{"uuid" => uuid}, _session, socket) do
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(:preview_limit, @preview_limit)
+     |> allow_upload(:file,
+       accept: ~w(.csv .txt),
+       max_entries: 1,
+       max_file_size: @max_file_size,
+       # auto_upload: the file starts transferring the moment it is picked,
+       # so the progress bar the entry row shows actually moves. With manual
+       # upload (false) nothing transfers until the form submit — live-tested
+       # by the user as "the upload never moves": a 0% bar next to a chosen
+       # file reads as a stall, not as "now press Preview".
+       auto_upload: true
+     )
+     |> reset_to_input()}
+  end
+
+  @impl true
+  def handle_params(%{"uuid" => uuid}, _uri, socket) do
     case Lists.get_list(uuid) do
       nil ->
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, gettext("List not found"))
          |> push_navigate(to: Paths.lists())}
 
       list ->
-        {:ok,
+        {:noreply,
          socket
          |> assign(:list, list)
          |> assign(:page_title, gettext("CRM — Import contacts"))
          |> assign(:page_section, list.name)
-         |> assign(:page_section_path, Paths.list_members(list.uuid))
-         |> assign(:preview_limit, @preview_limit)
-         |> allow_upload(:file,
-           accept: ~w(.csv .txt),
-           max_entries: 1,
-           max_file_size: @max_file_size,
-           # auto_upload: the file starts transferring the moment it is picked,
-           # so the progress bar the entry row shows actually moves. With manual
-           # upload (false) nothing transfers until the form submit — live-tested
-           # by the user as "the upload never moves": a 0% bar next to a chosen
-           # file reads as a stall, not as "now press Preview".
-           auto_upload: true
-         )
-         |> reset_to_input()}
+         |> assign(:page_section_path, Paths.list_members(list.uuid))}
     end
   end
 

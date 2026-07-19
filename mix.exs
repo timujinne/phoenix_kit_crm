@@ -72,7 +72,7 @@ defmodule PhoenixKitCRM.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper,
       # Dashboard tabs, and the admin layout this module renders into.
-#
+      #
       # Stage-3 lists/import code on this branch (feature/crm-contact-lists)
       # additionally requires core migration V152 (`email_send_profiles` +
       # `crm_lists`/`crm_list_members` DDL) — not yet published to Hex as of
