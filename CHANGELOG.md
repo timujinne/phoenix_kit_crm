@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-07-20
+
+### Fixed
+
+- **`Lists.recount_list/1`** raised if the list row it was recounting was
+  deleted concurrently between the caller loading it and the recount's own
+  `UPDATE` — a narrower race left open by 0.3.1's fix. It now returns
+  `:missing` instead of raising, and `Contacts.delete_contact/1`'s recount
+  step tolerates it: a moot counter on an already-deleted list no longer
+  rolls back the whole contact deletion (PR #15).
+
 ## [0.3.1] - 2026-07-19
 
 ### Fixed
