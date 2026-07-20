@@ -22,8 +22,8 @@ defmodule PhoenixKitCRM.ContactDeleteCountersTest do
   # concurrently. Confirmed live: `mix test --repeat-until-failure 30`
   # hit `** (Postgrex.Error) ERROR 40P01 (deadlock_detected)` on the very
   # first repetition (seed 763135) — this test's connection waiting on
-  # ACCESS EXCLUSIVE while blocked by a concurrent connection that was
-  # itself waiting on ACCESS SHARE for a row this transaction already
+  # the table-level ACCESS EXCLUSIVE the DDL needs, while blocked by a
+  # concurrent connection waiting on a row lock this transaction already
   # held, the textbook two-process cycle. This was the rare "1 failure in
   # 8 full-suite runs" flake. Do not flip this back to async: true, and
   # do not use this as precedent for adding DDL to other async tests —
