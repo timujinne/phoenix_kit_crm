@@ -11,7 +11,25 @@ defmodule PhoenixKitCRM.ContactDeleteCountersTest do
   contact deleted directly).
   """
 
-  use PhoenixKitCRM.DataCase, async: true
+  # async: false — deliberately, not the suite's default. One test below
+  # runs a real `ALTER TABLE ... DROP CONSTRAINT` inside its sandboxed
+  # transaction (see its own comment for why the DDL, not a genuine
+  # concurrency race, is the right way to reproduce that scenario). DDL
+  # takes an ACCESS EXCLUSIVE lock on `phoenix_kit_crm_list_members` for
+  # the rest of that transaction — i.e. until the sandbox rolls it back
+  # at test end — and several OTHER async: true files (companies_test.exs,
+  # lists_test.exs, lists/import_test.exs) read/write that same table
+  # concurrently. Confirmed live: `mix test --repeat-until-failure 30`
+  # hit `** (Postgrex.Error) ERROR 40P01 (deadlock_detected)` on the very
+  # first repetition (seed 763135) — this test's connection waiting on
+  # the table-level ACCESS EXCLUSIVE the DDL needs, while blocked by a
+  # concurrent connection waiting on a row lock this transaction already
+  # held, the textbook two-process cycle. This was the rare "1 failure in
+  # 8 full-suite runs" flake. Do not flip this back to async: true, and
+  # do not use this as precedent for adding DDL to other async tests —
+  # the fix here is isolating the ONE file that genuinely needs DDL, not
+  # a blanket policy change.
+  use PhoenixKitCRM.DataCase, async: false
 
   alias PhoenixKitCRM.{Contacts, Lists}
   alias PhoenixKitCRM.Schemas.ListMember
