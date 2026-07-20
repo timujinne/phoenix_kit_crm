@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-07-20
+
+### Fixed
+
+- **Test suite** — `contact_delete_counters_test.exs` ran a real
+  `ALTER TABLE ... DROP CONSTRAINT` inside a sandboxed transaction while
+  marked `async: true`, holding a table-level `ACCESS EXCLUSIVE` lock on
+  `phoenix_kit_crm_list_members` against other async files reading/writing
+  that same table concurrently — the rare "1 failure in 8 full-suite runs"
+  deadlock flake (`40P01 deadlock_detected`). The file is now `async: false`
+  (PR #16). Test-only change; no published package content is affected.
+
 ## [0.3.2] - 2026-07-20
 
 ### Fixed
